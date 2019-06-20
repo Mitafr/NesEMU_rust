@@ -1,0 +1,13 @@
+[package]
+name = "NesEMU-rust"
+version = "0.1.0"
+authors = ["Mita <martin.pelletier78@hotmail.com>"]
+edition = "2018"
+
+[dependencies]
+rand = "0.6.5"
+
+[dependencies.sdl2]
+version = "0.30"
+default-features = false
+features = ["gfx"]
