@@ -34,7 +34,7 @@ impl Memory {
             let bit: u8 = byte.unwrap();
             if bit != 0 {
                 self.size += 1;
-                self.mem[i + 0x100] = bit;
+                self.mem[i + 0x600] = bit;
             }
         }
         Ok(())
