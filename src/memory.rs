@@ -18,6 +18,7 @@ impl Memory {
         self.mem[i]
     }
     pub fn write(&mut self, i: usize, value: u8) {
+        println!("Writing => {:x?} at index {:x}", value, i);
         self.mem[i] = value;
     }
     pub fn load_rom(&mut self, filename: &str) -> Result<(), String> {
@@ -34,7 +35,7 @@ impl Memory {
             let bit: u8 = byte.unwrap();
             if bit != 0 {
                 self.size += 1;
-                self.mem[i + 0x600] = bit;
+                self.mem[i + 0x0600] = bit;
             }
         }
         Ok(())
@@ -46,8 +47,11 @@ impl fmt::Display for Memory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "Size: {}", self.size)?;
         for (i, b) in self.mem.iter().enumerate() {
-            if i >= 0x0200 && i <= 0x05FF + self.size {
-                write!(f, "{:x?} ", b)?;
+            if i >= 0x0200 && i <= 0x05FF {
+                let value: u8 = b.clone();
+                if value != 0 {
+                    writeln!(f, "{:04x?} => {:x?} ", i, b)?;
+                }
             }
         }
         Ok(())
