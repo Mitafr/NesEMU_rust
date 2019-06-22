@@ -33,8 +33,8 @@ pub struct Cpu {
     r_sr: u8,
     r_sp: u8,
     rom: String,
-    sound_timer: u8,
     stack: Vec<u16>,
+    pause: bool,
 }
 
 impl Cpu {
@@ -51,8 +51,8 @@ impl Cpu {
             r_sr: 0x0,
             r_sp: 0b00110000,
             rom: rom,
-            sound_timer: 0,
             stack: Vec::new(),
+            pause: false,
         }
     }
     pub fn init(&mut self) -> Result<(), String> {
@@ -62,9 +62,13 @@ impl Cpu {
     }
 
     pub fn run(&mut self) -> Result<(), String> {
-        let opcode = self.fetch_op_and_increment();
-        println!("OPCODE at {:x?}: {:x?}", self.pc as u8, opcode);
-        let value = self.execute_op(opcode);
+        if !self.pause {
+            let opcode = self.fetch_op_and_increment();
+            println!("OPCODE at {:x?}: {:x?}", self.pc as u8, opcode);
+            let value = self.execute_op(opcode);
+            println!("{}", self);
+            self.pause = !value;
+        }
         Ok(())
     }
     fn fetch_op(&mut self) -> u8 {
@@ -77,28 +81,13 @@ impl Cpu {
     }
     fn get_flag(&mut self, flag: StatusFlags) -> bool {
         match flag {
-            StatusFlags::CARRY => {
-                self.r_sp & 0b00000001 == 0b00000001
-            }
-            StatusFlags::ZERO => {
-                self.r_sp & 0b00000010 == 0b00000010
-            }
-            StatusFlags::INTERRUPT => {
-                self.r_sp & 0b00000100 == 0b00000100
-            }
-            StatusFlags::DECIMAL => {
-                self.r_sp & 0b00001000 == 0b00001000
-            }
-            StatusFlags::BREAK => {
-                self.r_sp & 0b00010000 == 0b00010000
-            }
-            StatusFlags::OVERFLOW => {
-                self.r_sp & 0b01000000 == 0b01000000
-            }
-            StatusFlags::NEGATIVE => {
-                self.r_sp & 0b10000000 == 0b00000000
-            }
-            _ => {false}
+            StatusFlags::CARRY => self.r_sp & 0b00000001 == 0b00000001,
+            StatusFlags::ZERO => self.r_sp & 0b00000010 == 0b00000010,
+            StatusFlags::INTERRUPT => self.r_sp & 0b00000100 == 0b00000100,
+            StatusFlags::DECIMAL => self.r_sp & 0b00001000 == 0b00001000,
+            StatusFlags::BREAK => self.r_sp & 0b00010000 == 0b00010000,
+            StatusFlags::OVERFLOW => self.r_sp & 0b01000000 == 0b01000000,
+            StatusFlags::NEGATIVE => self.r_sp & 0b10000000 == 0b10000000,
         }
     }
     fn set_flag(&mut self, flag: StatusFlags, value: bool) {
@@ -152,7 +141,6 @@ impl Cpu {
                     self.r_sp &= 0b01111111;
                 }
             }
-            _ => {}
         }
     }
     fn relative_address(&mut self) -> u16 {
@@ -164,7 +152,7 @@ impl Cpu {
         }
         a
     }
-    fn execute_op(&mut self, opcode: u8) {
+    fn execute_op(&mut self, opcode: u8) -> bool {
         match opcode {
              /* =====================
              * Register Instructions
@@ -197,6 +185,7 @@ impl Cpu {
                 self.r_x = value;
                 self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
                 self.set_flag(StatusFlags::ZERO, value == 0);
+                println!("{}", self.get_flag(StatusFlags::NEGATIVE));
             }
             0xa8 => {
                 // TAY (Tranfer A reg to Y reg)
@@ -248,6 +237,19 @@ impl Cpu {
              * AD Instructions
              * =====================
              */
+            0x69 => {
+                // ADC imm
+                let mut value = self.fetch_op_and_increment();
+                if self.get_flag(StatusFlags::CARRY) {
+                    value += 1;
+                }
+                let res: (u8, bool) = self.r_a.overflowing_add(value);
+                self.r_a = res.0;
+                self.set_flag(StatusFlags::CARRY, res.1);
+                self.set_flag(StatusFlags::OVERFLOW, res.1);
+                self.set_flag(StatusFlags::NEGATIVE, res.0 >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, res.0 == 0);
+            }
             0x65 => {
                 // ADC zeropage
                 let addr = self.fetch_op_and_increment();
@@ -259,29 +261,25 @@ impl Cpu {
                 self.r_a = res.0;
                 self.set_flag(StatusFlags::CARRY, res.1);
                 self.set_flag(StatusFlags::OVERFLOW, res.1);
-                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
-                self.set_flag(StatusFlags::ZERO, value == 0);
-            }
-            0x69 => {
-                // ADC imm
-                let mut value = self.fetch_op_and_increment();
-                if self.get_flag(StatusFlags::CARRY) {
-                    value += 1;
-                }
-                let res: (u8, bool) = self.r_a.overflowing_add(value);
-                self.set_flag(StatusFlags::CARRY, res.1);
-                self.set_flag(StatusFlags::OVERFLOW, res.1);
-                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
-                self.set_flag(StatusFlags::ZERO, value == 0);
+                self.set_flag(StatusFlags::NEGATIVE, res.0 >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, res.0 == 0);
             }
              /* =====================
              * ST Instructions
              * =====================
              */
             0x85 => {
-                // STA imm
+                // STA zero page
                 let hi = self.fetch_op_and_increment() as u16;
                 self.mem.write(hi as usize, self.r_a);
+            }
+            0x95 => {
+                // STA zeropage, X
+                let addr = self.fetch_op_and_increment();
+                let x = self.r_x;
+                let res: (u8, bool) = x.overflowing_add(addr);
+                let value = self.r_a;
+                self.mem.write(res.0 as usize, value);
             }
             0x8d => {
                 // STA absolute
@@ -289,6 +287,15 @@ impl Cpu {
                 let low = self.fetch_op_and_increment() as u16;
                 let value = (low << 8) | hi;
                 self.mem.write(value as usize, self.r_a);
+            }
+            0x9d => {
+                // STA Absolute,X
+                let x = self.r_x as u16;
+                let hi = self.fetch_op_and_increment() as u16;
+                let low = self.fetch_op_and_increment() as u16;
+                let value = (low << 8) | hi;
+                let addr = value | x;
+                self.mem.write(addr as usize, self.r_a);
             }
             0x99 => {
                 // STA Absolute,Y
@@ -324,6 +331,23 @@ impl Cpu {
                 self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
                 self.set_flag(StatusFlags::ZERO, value == 0);
             }
+            0xa5 => {
+                // LDA zero page
+                let addr = self.fetch_op_and_increment();
+                let value = self.mem.peek(addr as usize);
+                self.r_a = value;
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, value == 0);
+            }
+            0xb5 => {
+                // LDA zero page,X
+                let addr = self.fetch_op_and_increment();
+                let x = self.r_x;
+                let res: (u8, bool) = x.overflowing_add(addr);
+                self.r_a = res.0;
+                self.set_flag(StatusFlags::NEGATIVE, res.0 >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, res.0 == 0);
+            }
             0xa1 => {
                 // LDA (Indirect,x)
                 let xaddr = self.mem.peek(self.r_x as usize) as u16;
@@ -332,6 +356,8 @@ impl Cpu {
                 let value = self.mem.peek(memaddr as usize);
                 self.pc += 1;
                 self.r_a = value;
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, value == 0);
             }
             0xb1 => {
                 // LDA (Indirect),y
@@ -341,6 +367,8 @@ impl Cpu {
                 let value = self.mem.peek(memaddr as usize);
                 self.pc += 1;
                 self.r_a = value;
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, value == 0);
             }
             0xa2 => {
                 // LDX imm
@@ -357,18 +385,37 @@ impl Cpu {
                 self.set_flag(StatusFlags::ZERO, value == 0);
             }
             0x00 => {
-                println!("{}", self.mem);
-                println!("{}", self);
-                panic!(String::from("BRK"));
+                println!("BRK");
+                return false;
             }
              /* =====================
              * Logical Instructions
              * =====================
              */
+            0x4a => {
+                // LSR Absolute
+                let hi = self.fetch_op_and_increment() as u16;
+                println!("{:x?}", hi);
+                println!("LSR");
+                return false;
+            }
             0x4e => {
-                // LSR
+                // LSR Absolute
                 let hi = self.fetch_op_and_increment() as u16;
                 let low = (hi << 8) | self.fetch_op_and_increment() as u16;
+                let value = (low << 8) | hi;
+                println!("{:x?}", hi);
+                println!("{:x?}", low);
+                println!("{:x?}", value);
+                println!("{:08b}", self.mem.peek(value as usize));
+                return false;
+            }
+            0x29 => {
+                // AND imm
+                let value = self.fetch_op_and_increment();
+                self.r_a &= value;
+                self.set_flag(StatusFlags::ZERO, value == 0);
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
             }
             0xe0 => {
                 // CPX imm
@@ -376,6 +423,14 @@ impl Cpu {
                 let m = self.fetch_op_and_increment();
                 self.set_flag(StatusFlags::CARRY, x >= m);
                 self.set_flag(StatusFlags::ZERO, x == m);
+            }
+            0xe4 => {
+                // CPX zeropage
+                let x = self.r_x;
+                let m = self.fetch_op_and_increment();
+                self.set_flag(StatusFlags::CARRY, x >= m);
+                self.set_flag(StatusFlags::ZERO, x == m);
+                return false;
             }
             0xc0 => {
                 // CPY imm
@@ -388,6 +443,16 @@ impl Cpu {
                 // CMP imm
                 let a = self.r_a;
                 let m = self.fetch_op_and_increment();
+                let value = a.wrapping_sub(m);
+                self.set_flag(StatusFlags::CARRY, a >= m);
+                self.set_flag(StatusFlags::ZERO, a == m);
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+            }
+            0xc5 => {
+                // CMP zeropage
+                let addr = self.fetch_op_and_increment();
+                let m = self.mem.peek(addr as usize);
+                let a = self.r_a;
                 let value = a.wrapping_sub(m);
                 self.set_flag(StatusFlags::CARRY, a >= m);
                 self.set_flag(StatusFlags::ZERO, a == m);
@@ -407,6 +472,15 @@ impl Cpu {
                 // BNE Branch if not equal
                 println!("Check branch => {}", self.get_flag(StatusFlags::ZERO));
                 if self.get_flag(StatusFlags::ZERO) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0xf0 => {
+                // BEQ Branch if equal
+                println!("Check branch => {}", self.get_flag(StatusFlags::ZERO));
+                if !self.get_flag(StatusFlags::ZERO) {
                     self.pc += 1;
                 } else {
                     self.pc = self.relative_address() as usize;
@@ -474,23 +548,24 @@ impl Cpu {
                 self.set_flag(StatusFlags::DECIMAL, true);
             }
             _ => {
-                println!("{}", self);
-                panic!(String::from(format!("Unrecognized Opcode: {:x?}", opcode)));
+                println!("Unrecognized Opcode: {:x?}", opcode);
+                return false;
             }
         }
+        return true;
     }
 }
 
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "==========================");
-        writeln!(f, "       NV-BDIZC");
-        writeln!(f, "Flags: {:08b}", self.r_sp);
-        writeln!(f, "Accumulator: ${:x?}", self.r_a);
-        writeln!(f, "X: ${:x?}", self.r_x);
-        writeln!(f, "Y: ${:x?}", self.r_y);
-        writeln!(f, "End PC: ${:x?}", self.pc);
-        writeln!(f, "==========================");
-        Ok(())
+        writeln!(f, "==========================")?;
+        writeln!(f, "       NV-BDIZC")?;
+        writeln!(f, "Flags: {:08b}", self.r_sp)?;
+        writeln!(f, "Accumulator: ${:x?}", self.r_a)?;
+        writeln!(f, "X: ${:x?}", self.r_x)?;
+        writeln!(f, "Y: ${:x?}", self.r_y)?;
+        writeln!(f, "Stack: ${}", self.stack.len())?;
+        writeln!(f, "End PC: ${:x?}", self.pc)?;
+        writeln!(f, "==========================")
     }
 }
