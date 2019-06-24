@@ -1,6 +1,8 @@
 use crate::memory::Memory;
 extern crate rand;
 
+use rand::Rng;
+
 use std::fmt;
 
 pub enum Register {
@@ -61,8 +63,15 @@ impl Cpu {
         Ok(())
     }
 
+    fn set_random_number(&mut self) {
+        let mut rng = rand::thread_rng();
+        let value: u8 = rng.gen_range(0, 255);
+        self.mem.write(0x00FE, value);
+    }
+
     pub fn run(&mut self) -> Result<(), String> {
         if !self.pause {
+            self.set_random_number();
             let opcode = self.fetch_op_and_increment();
             println!("OPCODE at {:x?}: {:x?}", self.pc as u8, opcode);
             let value = self.execute_op(opcode);
@@ -215,6 +224,15 @@ impl Cpu {
                 self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
                 self.set_flag(StatusFlags::ZERO, value == 0);
             }
+            0xc6 => {
+                // DEC Decrement memory zeropage
+                let addr = self.fetch_op_and_increment();
+                let value = self.mem.peek(addr as usize) - 1;
+                self.mem.write(addr as usize, value);
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, value == 0);
+
+            }
              /* =====================
              * STACK Instructions
              * =====================
@@ -265,6 +283,23 @@ impl Cpu {
                 self.set_flag(StatusFlags::ZERO, res.0 == 0);
             }
              /* =====================
+             * SB Instructions
+             * =====================
+             */
+            0xe9 => {
+                // SBC imm
+                let mut value = self.fetch_op_and_increment();
+                if self.get_flag(StatusFlags::CARRY) {
+                    value += 1;
+                }
+                let res: (u8, bool) = self.r_a.overflowing_sub(value);
+                self.r_a = res.0;
+                self.set_flag(StatusFlags::CARRY, res.1);
+                self.set_flag(StatusFlags::OVERFLOW, res.1);
+                self.set_flag(StatusFlags::NEGATIVE, res.0 >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, res.0 == 0);
+            }
+             /* =====================
              * ST Instructions
              * =====================
              */
@@ -306,6 +341,24 @@ impl Cpu {
                 let addr = value | y;
                 self.mem.write(addr as usize, self.r_a);
             }
+            0x81 => {
+                // STA (Indirect,x)
+                let xaddr = self.mem.peek(self.r_x as usize) as u16;
+                let xaddr2 = self.mem.peek((self.r_x + self.r_x) as usize) as u16;
+                let memaddr = (xaddr2 << 8) | xaddr;
+                let value = self.r_a;
+                self.pc += 1;
+                self.mem.write(memaddr as usize, value);
+            }
+            0x91 => {
+                // STA (Indirect),y
+                let yaddr = self.mem.peek(self.r_y as usize) as u16;
+                let yaddr2 = self.mem.peek((self.r_y + self.r_y) as usize) as u16;
+                let memaddr = (yaddr2 << 8) | yaddr;
+                let value = self.r_a;
+                self.pc += 1;
+                self.mem.write(memaddr as usize, value);
+            }
             0x8e => {
                 // STX Absolute
                 let hi = self.fetch_op_and_increment() as u16;
@@ -335,6 +388,8 @@ impl Cpu {
                 // LDA zero page
                 let addr = self.fetch_op_and_increment();
                 let value = self.mem.peek(addr as usize);
+                println!("{:x?}", addr);
+                println!("{:x?}", value);
                 self.r_a = value;
                 self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
                 self.set_flag(StatusFlags::ZERO, value == 0);
@@ -377,6 +432,16 @@ impl Cpu {
                 self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
                 self.set_flag(StatusFlags::ZERO, value == 0);
             }
+            0xa6 => {
+                // LDX zero page
+                let addr = self.fetch_op_and_increment();
+                let value = self.mem.peek(addr as usize);
+                println!("{:x?}", addr);
+                println!("{:x?}", value);
+                self.r_x = value;
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, value == 0);
+            }
             0xa0 => {
                 // LDY imm
                 let value = self.fetch_op_and_increment();
@@ -393,11 +458,13 @@ impl Cpu {
              * =====================
              */
             0x4a => {
-                // LSR Absolute
-                let hi = self.fetch_op_and_increment() as u16;
-                println!("{:x?}", hi);
-                println!("LSR");
-                return false;
+                // LSR Accumulator
+                let old_acc = self.r_a;
+                self.set_flag(StatusFlags::CARRY, old_acc << 0 == 1);
+                let value = self.r_a >> 1;
+                self.r_a = value;
+                self.set_flag(StatusFlags::NEGATIVE, value >> 7 == 1);
+                self.set_flag(StatusFlags::ZERO, value == 0);
             }
             0x4e => {
                 // LSR Absolute
@@ -426,11 +493,11 @@ impl Cpu {
             }
             0xe4 => {
                 // CPX zeropage
+                let addr = self.fetch_op_and_increment();
                 let x = self.r_x;
-                let m = self.fetch_op_and_increment();
+                let m = self.mem.peek(addr as usize);
                 self.set_flag(StatusFlags::CARRY, x >= m);
                 self.set_flag(StatusFlags::ZERO, x == m);
-                return false;
             }
             0xc0 => {
                 // CPY imm
@@ -481,6 +548,60 @@ impl Cpu {
                 // BEQ Branch if equal
                 println!("Check branch => {}", self.get_flag(StatusFlags::ZERO));
                 if !self.get_flag(StatusFlags::ZERO) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0x10 => {
+                // BPL Branch if Positive
+                println!("Check branch => {}", self.get_flag(StatusFlags::NEGATIVE));
+                if !self.get_flag(StatusFlags::NEGATIVE) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0x30 => {
+                // BPL Branch if Minus
+                println!("Check branch => {}", self.get_flag(StatusFlags::NEGATIVE));
+                if self.get_flag(StatusFlags::NEGATIVE) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0x90 => {
+                // BCC Branch if Carry clear
+                println!("Check branch => {}", self.get_flag(StatusFlags::CARRY));
+                if !self.get_flag(StatusFlags::CARRY) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0xb0 => {
+                // BCS Branch if Carry set
+                println!("Check branch => {}", self.get_flag(StatusFlags::CARRY));
+                if self.get_flag(StatusFlags::CARRY) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0x50 => {
+                // BVC Branch if Overflow clear
+                println!("Check branch => {}", self.get_flag(StatusFlags::OVERFLOW));
+                if !self.get_flag(StatusFlags::OVERFLOW) {
+                    self.pc += 1;
+                } else {
+                    self.pc = self.relative_address() as usize;
+                }
+            }
+            0x70 => {
+                // BCS Branch if Overflow set
+                println!("Check branch => {}", self.get_flag(StatusFlags::OVERFLOW));
+                if self.get_flag(StatusFlags::OVERFLOW) {
                     self.pc += 1;
                 } else {
                     self.pc = self.relative_address() as usize;
@@ -546,6 +667,10 @@ impl Cpu {
             0xF8 => {
                 // SED
                 self.set_flag(StatusFlags::DECIMAL, true);
+            }
+            0xea => {
+                // NOP
+                return true;
             }
             _ => {
                 println!("Unrecognized Opcode: {:x?}", opcode);
