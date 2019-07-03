@@ -1,9 +1,10 @@
+#[macro_use]
+extern crate lazy_static;
 mod cpu;
 mod memory;
 mod cartbridge;
 mod gfx;
 mod opcode;
-mod cpu_registers;
 
 use sdl2;
 use sdl2::EventPump;
@@ -11,6 +12,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
 use cpu::Cpu;
+use cpu::EmulationStatus;
 use gfx::Gfx;
 
 fn main() -> Result<(), String> {
@@ -20,6 +22,7 @@ fn main() -> Result<(), String> {
     let mut cpu: Cpu = Cpu::new();
     cpu.init_rom(String::from("roms/snake.nes"));
     cpu.init_mem();
+    println!("{}", cpu);
     'main: loop {
         for event in events.poll_iter() {
             match event {
@@ -27,7 +30,13 @@ fn main() -> Result<(), String> {
                 _ => {}
             }
         }
-        cpu.run()?;
+        match cpu.run() {
+            s => {
+                if s == EmulationStatus::ERROR || s == EmulationStatus::BREAK {
+                    break 'main;
+                }
+            }
+        }
     }
     println!("{}", cpu);
     Ok(())

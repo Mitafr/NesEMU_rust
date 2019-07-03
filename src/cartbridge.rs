@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::fmt;
 use std::io::prelude::*;
 
 pub struct Cartbridge {
