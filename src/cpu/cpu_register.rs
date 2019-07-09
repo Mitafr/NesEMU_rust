@@ -1,4 +1,5 @@
 use crate::memory::*;
+use crate::cpu::cpu_bus::Bus;
 
 pub enum StatusFlags {
     CARRY,
@@ -10,7 +11,7 @@ pub enum StatusFlags {
     NEGATIVE,
 }
 
-pub struct Registers {
+pub struct Register {
     r_a: u8,
     r_x: u8,
     r_y: u8,
@@ -19,7 +20,7 @@ pub struct Registers {
     r_sr: u8,
 }
 
-pub trait CpuRegisters {
+pub trait CpuRegister {
     fn get_a(&self) -> u8;
     fn get_x(&self) -> u8;
     fn get_y(&self) -> u8;
@@ -43,24 +44,24 @@ pub trait CpuRegisters {
     fn incr_sp(&mut self) -> &mut Self;
     fn decr_sp(&mut self) -> &mut Self;
 
-    fn push_stack<M: Memory>(&mut self, v: u8, mem: &mut M) -> &mut Self;
-    fn pop_stack<M: Memory>(&mut self, mem: &mut M) -> u8;
+    fn push_stack<B: Bus>(&mut self, v: u8, bus: &mut B) -> &mut Self;
+    fn pop_stack<B: Bus>(&mut self, bus: &mut B) -> u8;
 }
 
-impl Registers {
-    pub fn new() -> Registers {
-        Registers {
+impl Register {
+    pub fn new() -> Register {
+        Register {
             r_a: 0x00,
             r_x: 0x00,
             r_y: 0x00,
             r_sp: 0xff,
-            r_pc: 0x600,
+            r_pc: 0x8000,
             r_sr: 0b00110000,
         }
     }
 }
 
-impl CpuRegisters for Registers {
+impl CpuRegister for Register {
     fn get_a(&self) -> u8 {
         self.r_a
     }
@@ -184,14 +185,14 @@ impl CpuRegisters for Registers {
         self.r_sp -= 1;
         self
     }
-    fn push_stack<M: Memory>(&mut self, v: u8, mem: &mut M) -> &mut Self {
-        mem.write((self.r_sp as u16 | 0x0100) as usize, v);
+    fn push_stack<B: Bus>(&mut self, v: u8, bus: &mut B) -> &mut Self {
+        bus.write((self.r_sp as u16 | 0x0100) as usize, v);
         self.decr_sp();
         self
     }
-    fn pop_stack<M: Memory>(&mut self, mem: &mut M) -> u8 {
+    fn pop_stack<B: Bus>(&mut self, bus: &mut B) -> u8 {
         self.incr_sp();
-        let val = mem.peek((0x0100 | self.r_sp as u16) as usize);
+        let val = bus.peek((0x0100 | self.r_sp as u16) as usize);
         val
     }
 }

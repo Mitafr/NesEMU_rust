@@ -1,0 +1,84 @@
+pub mod rom_mem;
+
+use crate::memory::Memory;
+use std::fs::File;
+use std::str;
+use std::io::prelude::*;
+
+pub struct Cartbridge {
+    path: String,
+    program: Vec<u8>,
+    character: Vec<u8>,
+    size: usize,
+    offset: usize,
+}
+
+impl Cartbridge {
+    pub fn new() -> Cartbridge {
+        Cartbridge {
+            path: String::new(),
+            program: Vec::new(),
+            character: Vec::new(),
+            size: 0,
+            offset: 0x8000,
+        }
+    }
+    pub fn read_file(&mut self, path: String) -> Vec<u8> {
+        self.path = path;
+        println!("Loading : {}", self.path);
+        
+        let mut f = File::open(&self.path).expect(&format!("file not found: {}", self.path));
+        let mut buffer = [0u8; 0xFFFF];
+        if let Ok(bytes_read) = f.read(&mut buffer) {
+            bytes_read
+        } else {
+            0
+        };
+        buffer.to_vec()
+    }
+    pub fn load_from_vec(&mut self, program: &Vec<u8>) {
+        for byte in program.bytes() {
+            let bit: u8 = byte.unwrap();
+            self.program.push(bit);
+        }
+    }
+    pub fn get_program(&mut self) -> &mut Vec<u8> {
+        &mut self.program
+    }
+}
+
+impl Memory for Cartbridge {
+    fn get_size(&self) -> usize {
+        self.size
+    }
+    fn peek(&mut self, i: usize) -> u8 {
+        self.program[i - self.offset]
+    }
+    fn write(&mut self, i: usize, value: u8) -> u8 {
+        println!("Writing in RAM => {:x?} at index {:x}", value, i);
+        self.program[i - self.offset] = value;
+        value
+    }
+    fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
+        let rom_name = str::from_utf8(&data[0..3]).unwrap();
+        if rom_name != "NES" {
+            panic!("Invalid ROM name header");
+        }
+        let next = str::from_utf8(&data[3..4]).unwrap();
+        if next != "\x1a" {
+            panic!("Invalid ROM header");
+        }
+        let prg_pages = data[4] as usize;
+        let chr_pages = data[5] as usize;
+        let rom_control_one = (data[6] & 0x01);
+        let character_rom_start = 0x0010 + prg_pages * 0x4000;
+        let character_rom_end = character_rom_start + chr_pages * 0x2000;
+        self.program = data[0x0010..0x0010 + character_rom_start].to_vec();
+        self.character = data[character_rom_start..character_rom_end].to_vec();
+        self.size = self.program.len();
+        self
+    }
+    fn get_mem(&self) -> &[u8] {
+        &self.program[0..self.size]
+    }
+}
