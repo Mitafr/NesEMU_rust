@@ -3,17 +3,7 @@ use crate::ppu::ppu_mem::PpuMem;
 
 use std::fmt;
 
-pub enum StatusFlags {
-    CARRY,
-    ZERO,
-    INTERRUPT,
-    DECIMAL,
-    BREAK,
-    OVERFLOW,
-    NEGATIVE,
-}
-
-pub struct Register {
+pub struct PpuRegister {
     r_ctrl_zero: u8,
     r_ctrl_one: u8,
     r_status: u8,
@@ -27,7 +17,7 @@ pub struct Register {
     r_writing_lower_addr: bool,
 }
 
-pub trait PpuRegister {
+pub trait Register {
     // CTRL $2000
     fn get_name_table(&self) -> u8;
     fn get_incr_value(&self) -> u8;
@@ -64,13 +54,15 @@ pub trait PpuRegister {
     fn write_data(&mut self, v: u8, mem: &mut PpuMem) -> &mut Self;
     fn set_oam_dma(&mut self, v: u8) -> &mut Self;
 
+    fn incr_addr(&mut self) -> &mut Self;
+
     fn peek(&self, i: usize) -> u8;
     fn write(&mut self, i: usize, v: u8, mem: &mut PpuMem) -> u8;
 }
 
-impl Register {
-    pub fn new() -> Register {
-        Register {
+impl PpuRegister {
+    pub fn new() -> PpuRegister {
+        PpuRegister {
             r_ctrl_zero: 0x00,
             r_ctrl_one: 0x00,
             r_status: 0x00,
@@ -85,12 +77,15 @@ impl Register {
     }
 }
 
-impl PpuRegister for Register {
+impl Register for PpuRegister {
     fn get_name_table(&self) -> u8 {
         (self.r_ctrl_zero >> 0) & 0x03
     }
     fn get_incr_value(&self) -> u8 {
-        (self.r_ctrl_zero >> 2) & 0x01
+        if (self.r_ctrl_zero >> 2) & 0x01 == 0x0 {
+            return 1;
+        }
+        return 32;
     }
     fn get_sprite_table(&self) -> u8 {
         (self.r_ctrl_zero >> 3) & 0x01
@@ -128,6 +123,11 @@ impl PpuRegister for Register {
         self.r_ctrl_one
     }
 
+    fn incr_addr(&mut self) -> &mut Self {
+        let value = self.get_incr_value() as u16;
+        self.r_addr += value;
+        self
+    }
 
 
 
@@ -190,6 +190,7 @@ impl PpuRegister for Register {
     fn write_data(&mut self, v: u8, mem: &mut PpuMem) -> &mut Self {
         self.r_data = v;
         mem.write(self.r_addr as usize, v);
+        self.incr_addr();
         self
     }
     fn set_oam_dma(&mut self, v: u8) -> &mut Self {
@@ -231,7 +232,7 @@ impl PpuRegister for Register {
     }
 }
 
-impl fmt::Display for Register {
+impl fmt::Display for PpuRegister {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "|\tPPU REGISTER\t")?;
         writeln!(f, "+---+-----------+-----------------+")?;

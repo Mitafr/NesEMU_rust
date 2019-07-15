@@ -1,9 +1,7 @@
-use crate::cpu::cpu_mem::CpuMem;
+use crate::cpu::cpu_mem::Ram;
 use crate::memory::Memory;
-use crate::memory::Ram;
 use crate::rom::Cartbridge;
 use crate::ppu::Ppu;
-use crate::ppu::ppu_register::PpuRegister;
 
 use std::fmt;
 

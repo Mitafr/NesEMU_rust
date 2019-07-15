@@ -1,5 +1,3 @@
-pub mod rom_mem;
-
 use crate::memory::Memory;
 use std::fs::File;
 use std::str;
@@ -60,6 +58,7 @@ impl Memory for Cartbridge {
         value
     }
     fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
+        println!("Loading buffer (size : {}) into Rom memory", data.len());
         let rom_name = str::from_utf8(&data[0..3]).unwrap();
         if rom_name != "NES" {
             panic!("Invalid ROM name header");
@@ -70,7 +69,7 @@ impl Memory for Cartbridge {
         }
         let prg_pages = data[4] as usize;
         let chr_pages = data[5] as usize;
-        let rom_control_one = (data[6] & 0x01);
+        let _rom_control_one = data[6] & 0x01;
         let character_rom_start = 0x0010 + prg_pages * 0x4000;
         let character_rom_end = character_rom_start + chr_pages * 0x2000;
         self.program = data[0x0010..0x0010 + character_rom_start].to_vec();

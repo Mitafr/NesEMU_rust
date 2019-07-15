@@ -3,41 +3,34 @@ pub mod opcode;
 pub mod cpu_mem;
 pub mod cpu_bus;
 
-use crate::cpu::cpu_bus::CpuBus;
 use crate::cpu::cpu_bus::Bus;
-use crate::ppu::Ppu;
-use crate::cpu::cpu_mem::CpuMem;
 use crate::cpu::cpu_register::*;
 use crate::cpu::opcode::*;
-use crate::memory::*;
-use crate::rom::Cartbridge;
 extern crate rand;
 
 use rand::Rng;
 
-use std::fmt;
-
 fn fetch_absolute_x<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let x = reg.get_x();
     let addr = fetch_word(reg, bus);
-    addr.wrapping_add(x as u16) & 0xFFFF
+    addr.wrapping_add(x as u16)
 }
 
 fn fetch_absolute_y<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let y = reg.get_y();
     let addr = fetch_word(reg, bus);
-    addr.wrapping_add(y as u16) & 0xFFFF
+    addr.wrapping_add(y as u16)
 }
 
 fn fetch_zeropage_x<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let value = fetch(reg, bus);
     let x = reg.get_x();
-    ((value + x as u16) & 0xFF) as u16
+    value.wrapping_add(x as u16)
 }
 fn fetch_zeropage_y<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let value = fetch(reg, bus);
     let y = reg.get_y();
-    ((value + y as u16) & 0xFF) as u16
+    value.wrapping_add(y as u16)
 }
 
 fn fetch_relative_address<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
@@ -49,11 +42,10 @@ fn fetch_relative_address<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u
     }
 }
 fn fetch_indirect_absolute<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let hi = fetch(reg, bus);
-    let low = hi + 1;
-    let himem = bus.peek(hi as usize) as u16;
-    let lowmem = bus.peek(low as usize) as u16;
-    (lowmem << 8) | himem
+    let addr = fetch_word(reg, bus);
+    let upper = bus.peek((addr as usize) | ((addr) + 1) as usize) as u16;
+    let low = bus.peek(addr as usize) as u16;
+    low + (upper << 8) as u16
 }
 fn fetch_indexed_indirect<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let x = reg.get_x() as u16;
@@ -64,10 +56,8 @@ fn fetch_indexed_indirect<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u
 }
 fn fetch_indirect_indexed<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let addr = fetch(reg, bus);
-    let hi = bus.peek(addr as usize) as u16;
-    let low = bus.peek((addr + 1) as usize) as u16;
-    let memaddr: u16 = (low << 8) | hi;
-    memaddr.wrapping_add(reg.get_y() as u16)
+    let base_addr = (bus.peek(addr as usize) as usize) + ((bus.peek(((addr + 1) & 0x00FF) as usize) as usize) * 0x100);
+    ((base_addr + (reg.get_y() as usize)) & 0xFFFF) as u16
 }
 fn fetch_operand<T: CpuRegister, B: Bus>(code: &Opcode, reg: &mut T, bus: &mut B) -> u16 {
     match code.mode {
@@ -89,9 +79,8 @@ fn fetch_operand<T: CpuRegister, B: Bus>(code: &Opcode, reg: &mut T, bus: &mut B
 
 fn fetch_opcode<'a, T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> &'a Opcode {
     let value = bus.peek(reg.get_pc() as usize);
-    let opcode: &Opcode = OPCODES.get(&value).unwrap();
     reg.incr_pc();
-    opcode
+    OPCODES.get(&value).unwrap()
 }
 fn fetch_word<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let hi = bus.peek(reg.get_pc() as usize) as u16;
@@ -101,9 +90,9 @@ fn fetch_word<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     ((low << 8) | hi) as u16
 }
 fn fetch<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let value = bus.peek(reg.get_pc() as usize);
+    let value = bus.peek(reg.get_pc() as usize) as u16;
     reg.incr_pc();
-    value as u16
+    value
 }
 
 #[derive(PartialEq)]
@@ -111,6 +100,7 @@ pub enum EmulationStatus {
     PROCESSING,
     ERROR,
     BREAK,
+    INFINITE_LOOP,
 }
 
 pub struct Cpu {
@@ -129,22 +119,18 @@ impl Cpu {
         let pc = ((low << 8) | hi) as u16;
         register.set_pc(pc);
     }
-    pub fn init_mem<M: Memory>(&mut self, mem: &mut M, cartbridge: &mut Cartbridge) {
-        mem.load_program(&mut cartbridge.get_program());
-    }
     fn set_random_number<B: Bus>(&mut self, bus: &mut B) {
         let mut rng = rand::thread_rng();
         let value: u8 = rng.gen_range(0, 255);
         bus.write(0x00FE, value);
     }
 
-    pub fn run<B: Bus, R: CpuRegister>(&mut self, bus: &mut B, register: &mut R) -> EmulationStatus {
+    pub fn run<B: Bus, R: CpuRegister>(&mut self, bus: &mut B, register: &mut R) -> (u16, EmulationStatus) {
         self.set_random_number(bus);
-        let pc = register.get_pc();
         let opcode = fetch_opcode(register, bus);
         let value = fetch_operand(opcode, register, bus);
-        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", pc, opcode, value);
-        self.execute_op(opcode, value, bus, register)
+        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), opcode, value);
+        (opcode.cycle, self.execute_op(opcode, value, bus, register))
     }
     fn run_instructions<B: Bus, R: CpuRegister>(&mut self, n: usize, bus: &mut B, register: &mut R) {
         for _i in 0..n {
@@ -155,18 +141,18 @@ impl Cpu {
             self.execute_op(opcode, value, bus, register);
         }
     }
-    fn execute_op<B: Bus, R: CpuRegister>(&mut self, opcode: &Opcode, mut value: u16, bus: &mut B, register: &mut R) -> EmulationStatus {
+    fn execute_op<B: Bus, R: CpuRegister>(&mut self, opcode: &Opcode, value: u16, bus: &mut B, register: &mut R) -> EmulationStatus {
         self.opcode_counter += 1;
         match opcode.name {
             Instruction::ADC => {
-                let res: (u8, bool);
+                let mut res: (u8, bool);
                 if opcode.mode == Addressing::Immediate {
                     res = register.get_a().overflowing_add(value as u8);
                 } else {
                     res = register.get_a().overflowing_add(bus.peek(value as usize));
                 }
                 if register.get_flag(StatusFlags::CARRY) {
-                    res.0.overflowing_add(1);
+                    res.0 += 1;
                 }
                 register
                     .set_a(res.0)
@@ -526,7 +512,6 @@ impl Cpu {
             }
             Instruction::STA => {
                 bus.write(value as usize, register.get_a());
-                println!("Acc: {:x?}", register.get_a());
             }
             Instruction::STX => {
                 bus.write(value as usize, register.get_x());
@@ -575,10 +560,6 @@ impl Cpu {
                     .set_flag(StatusFlags::ZERO, y == 0)
                     .set_flag(StatusFlags::NEGATIVE, y & (1 << 7) != 0)
                     .set_a(y);
-            }
-            _ => { 
-                println!("Unrecognized Opcode: {:x?}", opcode);
-                return EmulationStatus::ERROR;
             }
         }
         return EmulationStatus::PROCESSING;
