@@ -43,21 +43,7 @@ impl Cartbridge {
     pub fn get_program(&mut self) -> &mut Vec<u8> {
         &mut self.program
     }
-}
-
-impl Memory for Cartbridge {
-    fn get_size(&self) -> usize {
-        self.size
-    }
-    fn peek(&mut self, i: usize) -> u8 {
-        self.program[i - self.offset]
-    }
-    fn write(&mut self, i: usize, value: u8) -> u8 {
-        println!("Writing in RAM => {:x?} at index {:x}", value, i);
-        self.program[i - self.offset] = value;
-        value
-    }
-    fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
+    pub fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
         println!("Loading buffer (size : {}) into Rom memory", data.len());
         let rom_name = str::from_utf8(&data[0..3]).unwrap();
         if rom_name != "NES" {
@@ -76,6 +62,20 @@ impl Memory for Cartbridge {
         self.character = data[character_rom_start..character_rom_end].to_vec();
         self.size = self.program.len();
         self
+    }
+}
+
+impl Memory for Cartbridge {
+    fn get_size(&self) -> usize {
+        self.size
+    }
+    fn peek(&mut self, i: usize) -> u8 {
+        self.program[i - self.offset]
+    }
+    fn write(&mut self, i: usize, value: u8) -> u8 {
+        println!("Writing in RAM => {:x?} at index {:x}", value, i);
+        self.program[i - self.offset] = value;
+        value
     }
     fn get_mem(&self) -> &[u8] {
         &self.program[0..self.size]

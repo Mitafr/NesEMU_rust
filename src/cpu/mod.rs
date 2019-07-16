@@ -59,8 +59,8 @@ fn fetch_indirect_indexed<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u
     let base_addr = (bus.peek(addr as usize) as usize) + ((bus.peek(((addr + 1) & 0x00FF) as usize) as usize) * 0x100);
     ((base_addr + (reg.get_y() as usize)) & 0xFFFF) as u16
 }
-fn fetch_operand<T: CpuRegister, B: Bus>(code: &Opcode, reg: &mut T, bus: &mut B) -> u16 {
-    match code.mode {
+fn fetch_operand<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
+    match bus.get_opcode().mode {
         Addressing::Accumulator => 0x0000,
         Addressing::Implied => 0x0000,
         Addressing::Immediate => fetch(reg, bus),
@@ -77,10 +77,10 @@ fn fetch_operand<T: CpuRegister, B: Bus>(code: &Opcode, reg: &mut T, bus: &mut B
     }
 }
 
-fn fetch_opcode<'a, T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> &'a Opcode {
+fn fetch_opcode<'a, T: CpuRegister, B: Bus>(reg: &mut T, bus: &'a mut B) {
     let value = bus.peek(reg.get_pc() as usize);
     reg.incr_pc();
-    OPCODES.get(&value).unwrap()
+    bus.fetch_opcode(value);
 }
 fn fetch_word<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
     let hi = bus.peek(reg.get_pc() as usize) as u16;
@@ -108,6 +108,7 @@ pub struct Cpu {
 
 impl Cpu {
     pub fn new() -> Cpu {
+
         Cpu {
             opcode_counter: 0,
         }
@@ -126,22 +127,23 @@ impl Cpu {
 
     pub fn run<B: Bus, R: CpuRegister>(&mut self, bus: &mut B, register: &mut R) -> (u16, EmulationStatus) {
         self.set_random_number(bus);
-        let opcode = fetch_opcode(register, bus);
-        let value = fetch_operand(opcode, register, bus);
-        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), opcode, value);
-        (opcode.cycle, self.execute_op(opcode, value, bus, register))
+        fetch_opcode(register, bus);
+        let value = fetch_operand(register, bus);
+        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), bus.get_opcode(), value);
+        (bus.get_opcode().cycle, self.execute_op(value, bus, register))
     }
     fn run_instructions<B: Bus, R: CpuRegister>(&mut self, n: usize, bus: &mut B, register: &mut R) {
         for _i in 0..n {
             self.set_random_number(bus);
-            let opcode = fetch_opcode(register, bus);
-            let value = fetch_operand(opcode, register, bus);
-            println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), opcode, value);
-            self.execute_op(opcode, value, bus, register);
+            fetch_opcode(register, bus);
+            let value = fetch_operand(register, bus);
+            println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), bus.get_opcode(), value);
+            self.execute_op(value, bus, register);
         }
     }
-    fn execute_op<B: Bus, R: CpuRegister>(&mut self, opcode: &Opcode, value: u16, bus: &mut B, register: &mut R) -> EmulationStatus {
+    fn execute_op<B: Bus, R: CpuRegister>(&mut self, value: u16, bus: &mut B, register: &mut R) -> EmulationStatus {
         self.opcode_counter += 1;
+        let opcode = bus.get_opcode();
         match opcode.name {
             Instruction::ADC => {
                 let mut res: (u8, bool);

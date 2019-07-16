@@ -40,9 +40,9 @@ impl PpuRenderer {
     pub fn is_close_key_pressed(&mut self) -> bool {
         self.renderer.is_key_down(Key::Escape)
     }
-    pub fn has_pixel(&mut self, x: u32, y: u32) -> bool {
+    /*pub fn has_pixel(&mut self, x: u32, y: u32) -> bool {
         self.display[get_coords(x, y)] != 0
-    }
+    }*/
     pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
         self.display[get_coords(x, y)] = color;
     }

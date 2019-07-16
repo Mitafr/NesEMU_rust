@@ -17,6 +17,17 @@ impl Ram {
             offset: 0,
         }
     }
+    pub fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
+        for (i, byte) in data.bytes().enumerate() {
+            let bit: u8 = byte.unwrap();
+            if bit != 0 {
+                self.size += 1;
+                self.mem[i] = bit;
+                self.mirror[i] = bit;
+            }
+        }
+        self
+    }
 }
 
 impl Memory for Ram {
@@ -32,17 +43,6 @@ impl Memory for Ram {
         }
         self.mem[i - self.offset] = value;
         value
-    }
-    fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
-        for (i, byte) in data.bytes().enumerate() {
-            let bit: u8 = byte.unwrap();
-            if bit != 0 {
-                self.size += 1;
-                self.mem[i] = bit;
-                self.mirror[i] = bit;
-            }
-        }
-        self
     }
     fn get_mem(&self) -> &[u8] {
         &self.mem[0..self.size]

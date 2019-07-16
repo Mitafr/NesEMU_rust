@@ -31,10 +31,6 @@ impl Memory for PpuMem {
         value
     }
 
-    fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
-        self
-    }
-
     fn get_mem(&self) -> &[u8] {
         &self.mem
     }

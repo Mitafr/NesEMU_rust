@@ -12,7 +12,6 @@ use std::fmt;
 use cpu::Cpu;
 use rom::Cartbridge;
 use cpu::cpu_mem::Ram;
-use memory::Memory;
 use cpu::cpu_register::*;
 use ppu::PpuStatus;
 use cpu::EmulationStatus;
