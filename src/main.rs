@@ -44,12 +44,15 @@ impl Context {
     }
     pub fn run(&mut self) -> EmulationStatus{
         let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut self.cpu_ram, &mut self.cpu_rom, &mut self.ppu);
-        let mut cpu_cb: (u16, EmulationStatus) = self.cpu.run(&mut cpu_bus, &mut self.cpu_register);
+        let cpu_cb: (u16, EmulationStatus) = self.cpu.run(&mut cpu_bus, &mut self.cpu_register);
         let mut status = cpu_cb.1;
         match self.ppu.run(cpu_cb.0) {
             s => {
                 if s == PpuStatus::ERROR || s == PpuStatus::BREAK {
                     status = EmulationStatus::BREAK;
+                }
+                if s == PpuStatus::RENDERER_NOT_INITIALIZED {
+                    panic!("PPu Renderer not properly initialized");
                 }
             }
         }
@@ -58,6 +61,7 @@ impl Context {
     pub fn init(&mut self) {
         let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut self.cpu_ram, &mut self.cpu_rom, &mut self.ppu);
         self.cpu.reset(&mut cpu_bus, &mut self.cpu_register);
+        self.ppu.init();
     }
 }
 

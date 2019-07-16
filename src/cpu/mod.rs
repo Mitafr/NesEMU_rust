@@ -100,7 +100,6 @@ pub enum EmulationStatus {
     PROCESSING,
     ERROR,
     BREAK,
-    INFINITE_LOOP,
 }
 
 pub struct Cpu {
@@ -565,203 +564,241 @@ impl Cpu {
         return EmulationStatus::PROCESSING;
     }
 }
-/*
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn create_test_context(program: &Vec<u8>) -> Cpu {
-        let mut cpu = Cpu::new();
-        let mut cpu_ram = memory::Ram::new();
-        let cpu_register = cpu::cpu_register::Register::new();
-        let ppu = ppu::Ppu::new();
+    use crate::rom::Cartbridge;
+    use crate::ppu::Ppu;
+    use crate::memory::Memory;
+
+    struct TestContext {
+        cpu: Cpu,
+        ram: cpu_mem::Ram,
+        register: Register,
+        ppu: Ppu,
+        rom: Cartbridge
+    }
+
+    fn create_test_context(program: &Vec<u8>) -> TestContext {
         let mut cartbridge = Cartbridge::new();
-        let mut buffer = cartbridge.read_file(String::from("roms/hello.nes"));
-        cartbridge.load_program(&mut buffer);
-        cpu.rom.load_from_vec(program);
-        cpu.init_mem();
-        let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut cpu_ram, &mut cpu_rom, &mut ppu);
-        cpu
+        let cpu = Cpu::new();
+        let cpu_ram = cpu_mem::Ram::new();
+        let cpu_register = cpu_register::Register::new();
+        let ppu = Ppu::new();
+        cartbridge.load_from_vec(program);
+        TestContext {
+            cpu: cpu,
+            ram: cpu_ram,
+            register: cpu_register,
+            ppu: ppu,
+            rom: cartbridge
+        }
     }
     #[test]
     fn test_adc_immediate() {
         let program:Vec<u8> = vec!(0x69, 0xa1); // ADC #$a1
-        let mut cpu = create_test_context(&program);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0xa1);
+        let mut ctx = create_test_context(&program);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0xa1);
     }
     #[test]
     fn test_adc_zeropage() {
         let program:Vec<u8> = vec!(0x65, 0xa1); // ADC $a1
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a1, 0x08);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x08);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a1, 0x08);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x08);
     }
     #[test]
     fn test_adc_zeropagex() {
         let program:Vec<u8> = vec!(0x75, 0xa1); // ADC $a1,X
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a2, 0x08);
-        cpu.register.set_x(0x01);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x08);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a2, 0x08);
+        ctx.register.set_x(0x01);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x08);
     }
     #[test]
     fn test_adc_absolute() {
         let program:Vec<u8> = vec!(0x6D, 0xa1, 0x00); // ADC $00a1
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a1, 0x08);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x08);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a1, 0x08);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x08);
     }
     #[test]
     fn test_adc_absolutex() {
         let program:Vec<u8> = vec!(0x7D, 0xa1, 0x00); // ADC $00a1
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a2, 0x08);
-        cpu.register.set_x(0x01);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x08);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a2, 0x08);
+        ctx.register.set_x(0x01);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x08);
     }
     #[test]
     fn test_asl_accumulator() {
         let program:Vec<u8> = vec!(0x0A); // ASL A
-        let mut cpu = create_test_context(&program);
-        cpu.register.set_a(0x02);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x04);
+        let mut ctx = create_test_context(&program);
+        ctx.register.set_a(0x02);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x04);
     }
     #[test]
     fn test_asl() {
         let program:Vec<u8> = vec!(0x06, 0x04); // ASL $04
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x0004, 0x02);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.memory.peek(0x0004), 0x04);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x0004, 0x02);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.ram.peek(0x0004), 0x04);
     }
     #[test]
     fn test_lda_immediate() {
         let program:Vec<u8> = vec!(0xa9, 0xff); // LDA #$ff
-        let mut cpu = create_test_context(&program);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0xFF);
+        let mut ctx = create_test_context(&program);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0xFF);
     }
     #[test]
     fn test_lda_zeroepage() {
         let program:Vec<u8> = vec!(0xa5, 0xa0); // LDA $a0
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a0, 0x08);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x08);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a0, 0x08);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x08);
     }
     #[test]
     fn test_lda_zeroepagex() {
         let program:Vec<u8> = vec!(0xb5, 0xa0); // LDA $a0,X
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a5, 0x08);
-        cpu.register.set_x(0x05);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x08);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a5, 0x08);
+        ctx.register.set_x(0x05);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x08);
     }
     #[test]
     fn test_lda_absolute() {
         let program:Vec<u8> = vec!(0xad, 0x00, 0x1F);  // LDA $f000
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x1f00, 0x0F);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x0F);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x1f00, 0x0F);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x0F);
     }
     #[test]
     fn test_lda_absolutex() {
         let program:Vec<u8> = vec!(0xbd, 0xa5, 0x00);  // LDA $00a5,X
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00aa, 0x0F);
-        cpu.register.set_x(0x05);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x0F);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00aa, 0x0F);
+        ctx.register.set_x(0x05);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x0F);
     }
     #[test]
     fn test_lda_absolutey() {
         let program:Vec<u8> = vec!(0xb9, 0xa5, 0x00);  // LDA $00a5,Y
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00aa, 0x0F);
-        cpu.register.set_y(0x05);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0x0F);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00aa, 0x0F);
+        ctx.register.set_y(0x05);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0x0F);
     }
     #[test]
     fn test_lda_indirectx() {
         let program:Vec<u8> = vec!(0xa1, 0xa0);  // LDA ($a0,X)
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a1, 0xA3);
-        cpu.memory.write(0x00a3, 0xA0);
-        cpu.register.set_x(0x01);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0xA0);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a1, 0xA3);
+        ctx.ram.write(0x00a3, 0xA0);
+        ctx.register.set_x(0x01);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0xA0);
     }
     #[test]
     fn test_lda_indirecty() {
         let program:Vec<u8> = vec!(0xb1, 0xa5);  // LDA ($a5),Y
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x00a4, 0xA0);
-        cpu.memory.write(0x00a5, 0xA3);
-        cpu.register.set_y(0x01);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 0xA0);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a4, 0xA0);
+        ctx.ram.write(0x00a5, 0xA3);
+        ctx.register.set_y(0x01);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 0xA0);
     }
     #[test]
     fn test_rol_accumulator() {
         let program: Vec<u8> = vec!(0xA9, 146, 0x2A, 0x2A);
-        let mut cpu = create_test_context(&program);
-        cpu.run_instructions(2);
-        assert_eq!(cpu.register.get_a(), 36);
-        assert!(cpu.register.get_flag(StatusFlags::CARRY));
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 73);
-        assert!(!cpu.register.get_flag(StatusFlags::CARRY));
+        let mut ctx = create_test_context(&program);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(2, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 36);
+        assert!(ctx.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 73);
+        assert!(!ctx.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_rol() {
         let program: Vec<u8> = vec!(0x26, 0x22, 0x26, 0x22);
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x0022, 146);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.memory.peek(0x0022), 36);
-        assert!(cpu.register.get_flag(StatusFlags::CARRY));
-        cpu.run_instructions(1);
-        assert_eq!(cpu.memory.peek(0x0022), 73);
-        assert!(!cpu.register.get_flag(StatusFlags::CARRY));
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x0022, 146);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.ram.peek(0x0022), 36);
+        assert!(ctx.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.ram.peek(0x0022), 73);
+        assert!(!ctx.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_ror_accumulator() {
         let program: Vec<u8> = vec!(0xA9, 147, 0x6A, 0x6A);
-        let mut cpu = create_test_context(&program);
-        cpu.run_instructions(2);
-        assert_eq!(cpu.register.get_a(), 73);
-        assert!(cpu.register.get_flag(StatusFlags::CARRY));
-        cpu.run_instructions(1);
-        assert_eq!(cpu.register.get_a(), 164);
-        assert!(cpu.register.get_flag(StatusFlags::CARRY));
+        let mut ctx = create_test_context(&program);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(2, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 73);
+        assert!(ctx.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.register.get_a(), 164);
+        assert!(ctx.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_ror() {
         let program: Vec<u8> = vec!(0x66, 0x22, 0x66, 0x22);
-        let mut cpu = create_test_context(&program);
-        cpu.memory.write(0x0022, 147);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.memory.peek(0x0022), 73);
-        assert!(cpu.register.get_flag(StatusFlags::CARRY));
-        cpu.run_instructions(1);
-        assert_eq!(cpu.memory.peek(0x0022), 164);
-        assert!(cpu.register.get_flag(StatusFlags::CARRY));
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x0022, 147);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.ram.peek(0x0022), 73);
+        assert!(ctx.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.ram.peek(0x0022), 164);
+        assert!(ctx.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_sta() {
         let program:Vec<u8> = vec!(0x8d, 0xa5, 0x00);  // STA $00a5
-        let mut cpu = create_test_context(&program);
-        cpu.register.set_a(0x05);
-        cpu.run_instructions(1);
-        assert_eq!(cpu.memory.peek(0xa5u8 as usize), 0x05);
+        let mut ctx = create_test_context(&program);
+        ctx.register.set_a(0x05);
+        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
+        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert_eq!(ctx.ram.peek(0xa5u8 as usize), 0x05);
     }
 }
-*/
