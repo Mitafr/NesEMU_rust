@@ -50,7 +50,13 @@ impl Ppu {
         self.register.write(i, v, &mut self.mem)
     }
     pub fn init(&mut self) {
-        self.renderer = Some(PpuRenderer::new("NesEMU"));
+        let mut renderer = PpuRenderer::new("NesEMU");
+        for i in 0..240 {
+            for j in 0..256 {
+                renderer.set_pixel(j, i, 0xFFFFFF);
+            }
+        }
+        self.renderer = Some(renderer);
     }
     pub fn run(&mut self, cycle: u16) -> PpuStatus {
         let cycle = self.cycle + cycle;
