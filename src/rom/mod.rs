@@ -43,6 +43,9 @@ impl Cartbridge {
     pub fn get_program(&mut self) -> &mut Vec<u8> {
         &mut self.program
     }
+    pub fn get_character(&mut self) -> &mut Vec<u8> {
+        &mut self.character
+    }
     pub fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
         println!("Loading buffer (size : {}) into Rom memory", data.len());
         let rom_name = str::from_utf8(&data[0..3]).unwrap();

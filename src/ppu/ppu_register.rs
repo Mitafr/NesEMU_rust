@@ -1,5 +1,6 @@
 use crate::memory::*;
 use crate::ppu::ppu_mem::PpuMem;
+use crate::ppu::ppu_palette::PaletteVram;
 
 use std::fmt;
 
@@ -51,13 +52,13 @@ pub trait Register {
     fn set_oam_data(&mut self, v: u8) -> &mut Self;
     fn set_scroll(&mut self, v: u8) -> &mut Self;
     fn set_addr(&mut self, v: u16) -> &mut Self;
-    fn write_data(&mut self, v: u8, mem: &mut PpuMem) -> &mut Self;
+    fn write_data<P: PaletteVram>(&mut self, v: u8, mem: &mut PpuMem, palette: &mut P) -> &mut Self;
     fn set_oam_dma(&mut self, v: u8) -> &mut Self;
 
     fn incr_addr(&mut self) -> &mut Self;
 
     fn peek(&self, i: usize) -> u8;
-    fn write(&mut self, i: usize, v: u8, mem: &mut PpuMem) -> u8;
+    fn write<P: PaletteVram>(&mut self, i: usize, v: u8, mem: &mut PpuMem, palette: &mut P) -> u8;
 }
 
 impl PpuRegister {
@@ -187,9 +188,9 @@ impl Register for PpuRegister {
         }
         self
     }
-    fn write_data(&mut self, v: u8, mem: &mut PpuMem) -> &mut Self {
+    fn write_data<P: PaletteVram>(&mut self, v: u8, mem: &mut PpuMem, palette: &mut P) -> &mut Self {
         self.r_data = v;
-        mem.write(self.r_addr as usize, v);
+        mem.write_data(self.r_addr as usize, v, palette);
         self.incr_addr();
         self
     }
@@ -213,7 +214,7 @@ impl Register for PpuRegister {
             }
         }
     }
-    fn write(&mut self, i: usize, v: u8, mem: &mut PpuMem) -> u8 {
+    fn write<P: PaletteVram>(&mut self, i: usize, v: u8, mem: &mut PpuMem, palette: &mut P) -> u8 {
         println!("Writing PPU at {:x?}, value: {:x?}", i, v);
         match i {
             0x2000 => self.set_ctrl_zero(v),
@@ -223,7 +224,7 @@ impl Register for PpuRegister {
             0x2004 => self.set_oam_data(v),
             0x2005 => self.set_scroll(v),
             0x2006 => self.set_addr(v as u16),
-            0x2007 => self.write_data(v, mem),
+            0x2007 => self.write_data(v, mem, palette),
             _ => {
                 panic!("Invalid write in PPU at {:x?} : {:x?}", i, v);
             }

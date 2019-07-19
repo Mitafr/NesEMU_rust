@@ -6,6 +6,7 @@ mod ppu;
 mod memory;
 mod rom;
 mod driver;
+mod debugger;
 
 use std::fmt;
 
@@ -15,13 +16,16 @@ use cpu::cpu_mem::Ram;
 use cpu::cpu_register::*;
 use ppu::PpuStatus;
 use cpu::EmulationStatus;
+use debugger::PpuDebugger;
+use debugger::DebuggerStatus;
 
-struct Context {
+pub struct Context {
     ppu: ppu::Ppu,
     cpu: cpu::Cpu,
     cpu_register: cpu::cpu_register::Register,
     cpu_ram: Ram,
-    cpu_rom: Cartbridge,
+    rom: Cartbridge,
+    debugger: PpuDebugger,
 }
 
 impl Context {
@@ -38,11 +42,12 @@ impl Context {
             cpu: cpu,
             cpu_register: cpu_register,
             cpu_ram: cpu_ram,
-            cpu_rom: cartbridge,
+            rom: cartbridge,
+            debugger: PpuDebugger::new(),
         }
     }
     pub fn run(&mut self) -> EmulationStatus{
-        let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut self.cpu_ram, &mut self.cpu_rom, &mut self.ppu);
+        let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu);
         let cpu_cb: (u16, EmulationStatus) = self.cpu.run(&mut cpu_bus, &mut self.cpu_register);
         let mut status = cpu_cb.1;
         match self.ppu.run(cpu_cb.0) {
@@ -55,12 +60,17 @@ impl Context {
                 }
             }
         }
+        if status == EmulationStatus::PROCESSING {
+            self.debugger.draw_tileset(&mut self.ppu.tileset, &self.ppu.palette);
+            self.debugger.draw_palette(&self.ppu.palette);
+        }
         status
     }
     pub fn init(&mut self) {
-        let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut self.cpu_ram, &mut self.cpu_rom, &mut self.ppu);
+        let mut cpu_bus = cpu::cpu_bus::CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu);
         self.cpu.reset(&mut cpu_bus, &mut self.cpu_register);
-        self.ppu.init();
+        self.ppu.init(&mut self.rom);
+        self.debugger.init();
     }
 }
 

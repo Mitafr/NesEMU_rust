@@ -1,4 +1,6 @@
 use crate::memory::Memory;
+use crate::ppu::ppu_palette::Palette;
+use crate::ppu::ppu_palette::PaletteVram;
 
 use std::fmt;
 
@@ -14,28 +16,35 @@ impl PpuMem {
             size: 0,
         }
     }
-}
-
-impl Memory for PpuMem {
-    fn get_size(&self) -> usize {
+    pub fn get_size(&self) -> usize {
         self.size
     }
 
-    fn peek(&mut self, i: usize) -> u8 {
+    pub fn peek(&mut self, i: usize) -> u8 {
         println!("Reading in VRAM at {:x?}", i);
         self.mem[i]
     }
-    fn write(&mut self, i: usize, value: u8) -> u8 {
+    pub fn write_data<P: PaletteVram>(&mut self, i: usize, value: u8, palette: &mut P) -> u8 {
+        println!("Writing in VRAM at {:x?} -> {:x?} ({:08b})", i, value, value);
+        match i {
+            0x3F00...0x3F0F => {
+                palette.write_background(value)
+            }
+            _ => self.mem[i] = value,
+        };
+        value
+    }
+    pub fn write_addr(&mut self, i: usize, value: u8) -> u8 {
         println!("Writing in VRAM at {:x?} -> {:x?} ({:08b})", i, value, value);
         self.mem[i] = value;
         value
     }
 
-    fn get_mem(&self) -> &[u8] {
+    pub fn get_mem(&self) -> &[u8] {
         &self.mem
     }
-
 }
+
 impl fmt::Display for PpuMem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "|----------PPU MEM--------------|")?;
@@ -43,9 +52,13 @@ impl fmt::Display for PpuMem {
         writeln!(f, "|\tadresse =>    value  |")?;
         writeln!(f, "|--------------++---------------|")?;
         for (i, b) in self.mem.iter().enumerate() {
-            if *b != 0 {
-                writeln!(f, "|\t{:04x?}\t => \t{:x?}\t|", i, b)?;
+            if i % 16 == 0 {    
+                write!(f, "\n{:04x?}:", i)?;
             }
+            if i % 4 == 0 {
+                write!(f, "  ")?;
+            }
+            write!(f, "{:02x?} " , b)?;
         }
         writeln!(f, "|_______________________________|")?;
         Ok(())

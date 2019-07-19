@@ -21,7 +21,7 @@ impl PpuRenderer {
             scale: SCALE,
         };
         let window = Window::new(name,
-                                    SCREEN_HEIGHT,
+                                    SCREEN_WIDTH,
                                     SCREEN_HEIGHT,
                                     window_options).unwrap_or_else(|e| {
             panic!("{}", e);
@@ -44,7 +44,11 @@ impl PpuRenderer {
         self.display[get_coords(x, y)] != 0
     }*/
     pub fn set_pixel(&mut self, x: u32, y: u32, color: u32) {
-        self.display[get_coords(x, y)] = color;
+        let coords = get_coords(x, y);
+        self.display[coords] = color;
+    }
+    pub fn set_pixel_direct(&mut self, v: usize, color: u32) {
+        self.display[v] = color;
     }
 }
 
