@@ -8,12 +8,12 @@ const SCREEN_WIDTH: usize = 256;
 
 pub struct PpuRenderer {
     renderer: Window,
-    display: [u32; (SCREEN_WIDTH * SCREEN_HEIGHT) as usize],
+    display: Vec<u32>,
 }
 
 impl PpuRenderer {
     pub fn new(name: &str) -> PpuRenderer {
-        let buffer = [0; (SCREEN_WIDTH * SCREEN_HEIGHT) as usize];
+        let buffer = vec!(0u32; SCREEN_WIDTH * SCREEN_HEIGHT);
         let window_options: WindowOptions = WindowOptions {
             borderless: false,
             title: true,

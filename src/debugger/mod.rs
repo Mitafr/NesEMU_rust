@@ -14,7 +14,7 @@ use crate::ppu::ppu_palette::Palette;
 use crate::ppu::ppu_tile::Tile;
 use crate::rom::Cartbridge;
 
-const SCALE: Scale = Scale::X4;
+const SCALE: Scale = Scale::X2;
 const SCREEN_HEIGHT: usize = 240;
 const SCREEN_WIDTH: usize = 256 * 2;
 
@@ -26,12 +26,12 @@ pub enum DebuggerStatus {
 
 pub struct PpuDebugger {
     renderer: Window,
-    display: [u32; (SCREEN_WIDTH * SCREEN_HEIGHT) as usize],
+    display: Vec<u32>,
 }
 
 impl PpuDebugger {
     pub fn new() -> PpuDebugger {
-        let buffer = [0; (SCREEN_WIDTH * SCREEN_HEIGHT) as usize];
+        let buffer = vec!(0u32; SCREEN_WIDTH * SCREEN_HEIGHT);
         let window_options: WindowOptions = WindowOptions {
             borderless: false,
             title: true,
