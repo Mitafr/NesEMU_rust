@@ -1,6 +1,3 @@
-extern crate ansi_term;
-
-use ansi_term::{Style, Colour};
 use crate::ppu::ppu_mem::PpuMem;
 
 use std::fmt;

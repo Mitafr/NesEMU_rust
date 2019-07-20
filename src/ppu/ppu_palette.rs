@@ -1,6 +1,3 @@
-extern crate ansi_term;
-
-use ansi_term::{Style, Colour};
 use crate::ppu::ppu_colors::COLORS;
 
 use std::fmt;
@@ -47,13 +44,6 @@ impl fmt::Display for Palette {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, v) in self.background.iter().enumerate() {
             write!(f, "{:06x?}   ", v)?;
-        }
-        writeln!(f, "")?;
-        for (i, v) in self.background.iter().enumerate() {
-            let r = ((v & 0xFF0000) >> 16) as u8;
-            let g = ((v & 0x00FF00) >> 8) as u8;
-            let b = ((v & 0x0000FF) >> 0) as u8;
-            print!("{}   ", Style::default().on(Colour::RGB(r, g as u8, b)).paint("      "));
         }
         writeln!(f, "")?;
         for (i, v) in self.background.iter().enumerate() {
