@@ -1,6 +1,6 @@
 use crate::memory::*;
-use crate::ppu::ppu_mem::PpuMem;
-use crate::ppu::ppu_palette::PaletteVram;
+use crate::ppu::mem::PpuMem;
+use crate::ppu::palette::PaletteVram;
 
 use std::fmt;
 
@@ -36,7 +36,7 @@ pub trait Register {
     fn get_background_clipping(&self) -> u8;
     fn get_ctrl_one(&self) -> u8;
 
-
+    // $2002
     fn get_status(&self) -> u8;
     fn get_oam_addr(&self) -> u8;
     fn get_oam_data(&self) -> u8;
@@ -133,7 +133,9 @@ impl Register for PpuRegister {
 
 
     fn get_status(&self) -> u8 {
-        self.r_status
+        // TODO
+        let data = self.r_status;
+        data
     }
     fn get_oam_addr(&self) -> u8 {
         self.r_oam_addr

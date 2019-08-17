@@ -24,8 +24,7 @@ impl Cartbridge {
     pub fn read_file(&mut self, path: String) -> Vec<u8> {
         self.path = path;
         println!("Loading : {}", self.path);
-        
-        let mut f = File::open(&self.path).expect(&format!("file not found: {}", self.path));
+        let mut f = File::open(&self.path).expect(&format!("File not found: {}", self.path));
         let mut buffer = [0u8; 0xFFFF];
         if let Ok(bytes_read) = f.read(&mut buffer) {
             bytes_read
@@ -35,10 +34,11 @@ impl Cartbridge {
         buffer.to_vec()
     }
     pub fn load_from_vec(&mut self, program: &Vec<u8>) {
-        for byte in program.bytes() {
-            let bit: u8 = byte.unwrap();
-            self.program.push(bit);
+        for i in program.iter() {
+            self.program.push(*i);
         }
+        self.program.resize(0x8000, 0u8);
+        self.size = 0x8000;
     }
     pub fn get_program(&mut self) -> &mut Vec<u8> {
         &mut self.program
@@ -56,15 +56,21 @@ impl Cartbridge {
         if next != "\x1a" {
             panic!("Invalid ROM header");
         }
-        let prg_pages = data[4] as usize;
-        let chr_pages = data[5] as usize;
-        let _rom_control_one = data[6] & 0x01;
-        let character_rom_start = 0x0010 + prg_pages * 0x4000;
-        let character_rom_end = character_rom_start + chr_pages * 0x2000;
+        let prg_pages = data[4] as usize; // 2
+        let chr_pages = data[5] as usize; // 1
+        let _rom_control_one = data[6] & 0x01; // 0
+        let character_rom_start = 0x0010 + prg_pages * 0x4000; // 32784
+        let character_rom_end = character_rom_start + chr_pages * 0x2000; //40976
         self.program = data[0x0010..0x0010 + character_rom_start].to_vec();
         self.character = data[character_rom_start..character_rom_end].to_vec();
         self.size = self.program.len();
+        if prg_pages == 1 {
+            self.offset = 0xC000;
+        }
         self
+    }
+    pub fn set_offset(&mut self, value: usize) {
+        self.offset = value;
     }
 }
 

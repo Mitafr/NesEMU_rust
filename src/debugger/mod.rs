@@ -3,15 +3,15 @@ extern crate minifb;
 use minifb::{Key, WindowOptions, Window, Scale};
 
 use crate::Context;
-use crate::ppu::ppu_palette::PaletteVram;
-use crate::ppu::ppu_background::Background;
-use crate::ppu::ppu_mem::PpuMem;
+use crate::ppu::palette::PaletteVram;
+use crate::ppu::background::Background;
+use crate::ppu::mem::PpuMem;
 use crate::memory::Memory;
-use crate::ppu::ppu_register::Register;
-use crate::ppu::ppu_register::PpuRegister;
-use crate::ppu::ppu_renderer::PpuRenderer;
-use crate::ppu::ppu_palette::Palette;
-use crate::ppu::ppu_tile::Tile;
+use crate::ppu::register::Register;
+use crate::ppu::register::PpuRegister;
+use crate::ppu::renderer::PpuRenderer;
+use crate::ppu::palette::Palette;
+use crate::ppu::tile::Tile;
 use crate::rom::Cartbridge;
 
 const SCALE: Scale = Scale::X2;
@@ -22,6 +22,7 @@ const SCREEN_WIDTH: usize = 256 * 2;
 pub enum DebuggerStatus {
     PROCESSING,
     BREAK,
+    WAITING,
 }
 
 pub struct PpuDebugger {
@@ -31,14 +32,14 @@ pub struct PpuDebugger {
 
 impl PpuDebugger {
     pub fn new() -> PpuDebugger {
-        let buffer = vec!(0u32; SCREEN_WIDTH * SCREEN_HEIGHT);
+        let buffer = vec!(0x323232u32; SCREEN_WIDTH * SCREEN_HEIGHT);
         let window_options: WindowOptions = WindowOptions {
-            borderless: false,
+            borderless: true,
             title: true,
             resize: false,
             scale: SCALE,
         };
-        let window = Window::new("Nametable",
+        let window = Window::new("Debugger",
                                     SCREEN_WIDTH,
                                     SCREEN_HEIGHT,
                                     window_options).unwrap_or_else(|e| {
@@ -50,15 +51,16 @@ impl PpuDebugger {
         }
     }
     pub fn draw_tileset(&mut self, tileset: &Vec<Tile>, palette: &Palette) -> DebuggerStatus {
-        for (tile,t) in tileset.iter().enumerate() {
-            for (y, tt) in t.iter().enumerate() {
-                for (x, tt) in tt.iter().enumerate() {
-                    let color = palette.peek_color_background(*tt);
-                    if color != 0 {
-                        let xcoord = (((tile % 32) * 8 + x)) as u32;
-                        let ycoord = (((tile / 32) * 8 + y)) as u32;
-                        self.set_pixel(xcoord, ycoord, color & 0xFFFFFF);
+        for (tile_index, tile) in tileset.iter().enumerate() {
+            for (y, tt) in tile.iter().enumerate() {
+                for (x, tile_v) in tt.iter().enumerate() {
+                    if *tile_v == 0 {
+                        continue;
                     }
+                    let color = palette.peek_color_background(*tile_v);
+                    let xcoord = (((tile_index % 32) * 8 + x)) as u32;
+                    let ycoord = (((tile_index / 32) * 8 + y)) as u32;
+                    self.set_pixel(xcoord, ycoord, color & 0xFFFFFF);
                 }
             }
         }
@@ -73,6 +75,9 @@ impl PpuDebugger {
             let xcoord = 256 + (((tile % 32) * 8 + tile * 8)) as u32;
             let ycoord = 256 + (((tile / 32) * 8)) as u32;
             for i in 0..8 {
+                self.set_pixel(xcoord + 4, ycoord - 8 - i, 0);
+            }
+            for i in 0..8 {
                 for j in 0..8 {
                     self.set_pixel(xcoord + i, ycoord + j, *t);
                 }
@@ -85,7 +90,9 @@ impl PpuDebugger {
         DebuggerStatus::PROCESSING
     }
     pub fn init(&mut self) {
-        self.renderer.set_position(0, 0);
+        let x = (1920 - SCREEN_WIDTH - 256) / 2;
+        let y = (1080/2) - (SCREEN_HEIGHT / 2);
+        self.renderer.set_position(x as isize, y as isize);
     }
     pub fn is_open(&mut self) -> bool {
         self.renderer.is_open()

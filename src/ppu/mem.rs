@@ -1,6 +1,6 @@
 use crate::memory::Memory;
-use crate::ppu::ppu_palette::Palette;
-use crate::ppu::ppu_palette::PaletteVram;
+use crate::ppu::palette::Palette;
+use crate::ppu::palette::PaletteVram;
 
 use std::fmt;
 
@@ -21,11 +21,9 @@ impl PpuMem {
     }
 
     pub fn peek(&mut self, i: usize) -> u8 {
-        println!("Reading in VRAM at {:x?}", i);
         self.mem[i]
     }
     pub fn write_data<P: PaletteVram>(&mut self, i: usize, value: u8, palette: &mut P) -> u8 {
-        println!("Writing in VRAM at {:x?} -> {:x?} ({:08b})", i, value, value);
         match i {
             0x3F00...0x3F0F => {
                 palette.write_background(value)
@@ -60,7 +58,6 @@ impl fmt::Display for PpuMem {
             }
             write!(f, "{:02x?} " , b)?;
         }
-        writeln!(f, "|_______________________________|")?;
         Ok(())
     }
 }

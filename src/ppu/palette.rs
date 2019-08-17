@@ -1,4 +1,4 @@
-use crate::ppu::ppu_colors::COLORS;
+use crate::ppu::colors::COLORS;
 
 use std::fmt;
 
