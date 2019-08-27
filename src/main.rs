@@ -1,12 +1,17 @@
 #[macro_use]
 extern crate lazy_static;
+use sdl2;
+use sdl2::EventPump;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 
 mod cpu;
-mod ppu;
-mod memory;
-mod rom;
-mod driver;
 mod debugger;
+mod driver;
+mod memory;
+mod ppu;
+mod renderer;
+mod rom;
 
 use std::env;
 use std::fmt;
@@ -18,10 +23,12 @@ use cpu::cpu_mem::Ram;
 use cpu::cpu_register::CpuRegister;
 use cpu::cpu_register::Register;
 use cpu::cpu_bus::CpuBus;
+#[allow(unused_imports)]
 use cpu::cpu_bus::Bus;
-use ppu::PpuStatus;
 use cpu::EmulationStatus;
 use debugger::PpuDebugger;
+use renderer::Renderer;
+use ppu::PpuStatus;
 
 pub struct Context {
     ppu: ppu::Ppu,
@@ -30,10 +37,12 @@ pub struct Context {
     cpu_ram: Ram,
     rom: Cartbridge,
     debugger: Option<PpuDebugger>,
+    renderer: Renderer,
+    events: EventPump,
 }
 
 impl Context {
-    pub fn new(debugging: bool) -> Context {
+    pub fn new() -> Context {
         let cpu = Cpu::new();
         let cpu_ram = Ram::new();
         let cpu_register = cpu::cpu_register::Register::new();
@@ -41,11 +50,10 @@ impl Context {
         let mut cartbridge = Cartbridge::new();
         let mut buffer = cartbridge.read_file(String::from("roms/hello.nes"));
         cartbridge.load_program(&mut buffer);
-        let debugger = if debugging {
-            Some(PpuDebugger::new())
-        } else {
-            None
-        };
+        let sdl_context = sdl2::init().unwrap();
+        let events: EventPump = sdl_context.event_pump().unwrap();
+        let debugger = Some(PpuDebugger::new(&sdl_context));
+        let renderer = Renderer::new(&sdl_context, "NesEmu");
         Context {
             ppu: ppu,
             cpu: cpu,
@@ -53,28 +61,50 @@ impl Context {
             cpu_ram: cpu_ram,
             rom: cartbridge,
             debugger: debugger,
+            events: events,
+            renderer: renderer,
         }
     }
     pub fn run(&mut self) -> EmulationStatus{
         let mut cpu_bus = CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu);
         let cpu_cb: (u16, EmulationStatus) = self.cpu.run(&mut cpu_bus, &mut self.cpu_register);
         let mut status = cpu_cb.1;
-        match self.ppu.run(cpu_cb.0) {
-            s => {
-                if s == PpuStatus::ERROR || s == PpuStatus::BREAK {
-                    status = EmulationStatus::BREAK;
+        let s = self.ppu.run(cpu_cb.0 * 3);
+        for event in self.events.poll_iter() {
+            match event {
+                Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    return EmulationStatus::BREAK;
+                },
+                Event::KeyDown { keycode: Some(Keycode::F1), ..} => {
+                    match &mut self.debugger {
+                        Some(debugger) => {
+                            debugger.toggle_view();
+                            self.ppu.force_update();
+                        }
+                        None => {}
+                    }
                 }
-                if s == PpuStatus::RENDERER_NOT_INITIALIZED {
-                    panic!("PPu Renderer not properly initialized");
-                }
+                _ => {}
             }
+        }
+        if s == PpuStatus::ERROR || s == PpuStatus::BREAK {
+            status = EmulationStatus::BREAK;
+        }
+        if s == PpuStatus::RENDERERNOTINITIALIZED {
+            panic!("PPu Renderer not properly initialized");
+        }
+        if s == PpuStatus::RENDERING {
+            &mut self.ppu.background.draw(&mut self.renderer, &mut self.ppu.palette);
+            self.ppu.sprites.draw(&mut self.renderer, &mut self.ppu.palette);
+            self.renderer.draw_window();
         }
         if status == EmulationStatus::PROCESSING && self.ppu.has_been_updated() {
             match &mut self.debugger {
                 Some(debugger) => {
                     if debugger.is_open() {
-                        debugger.draw_tileset(&mut self.ppu.tileset, &self.ppu.palette);
+                        debugger.draw_tileset(&self.ppu.tileset, &self.ppu.palette);
                         debugger.draw_palette(&self.ppu.palette);
+                        debugger.draw();
                     }
                 }
                 None => {}
@@ -97,7 +127,7 @@ impl Context {
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
-    let mut ctx = Context::new(args.get(1) != None && args.get(1).unwrap() == "--debugger");
+    let mut ctx = Context::new();
     ctx.init();
     'main: loop {
         match ctx.run() {

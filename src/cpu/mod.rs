@@ -117,7 +117,6 @@ impl Cpu {
         let value: u8 = rng.gen_range(0, 255);
         bus.write(0x00FE, value);
     }
-
     pub fn run<B: Bus, R: CpuRegister>(&mut self, bus: &mut B, register: &mut R) -> (u16, EmulationStatus) {
         self.set_random_number(bus);
         let value = bus.peek(register.get_pc() as usize);
@@ -128,6 +127,7 @@ impl Cpu {
         self.opcode_counter += 1;
         (opcode.cycle, self.execute_op(value, bus, register, opcode))
     }
+    #[allow(dead_code)]
     fn run_instructions<B: Bus, R: CpuRegister>(&mut self, n: usize, bus: &mut B, register: &mut R) {
         for _i in 0..n {
             self.set_random_number(bus);

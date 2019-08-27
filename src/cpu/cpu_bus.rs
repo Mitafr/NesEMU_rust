@@ -1,7 +1,4 @@
 use crate::cpu::cpu_mem::Ram;
-use crate::cpu::opcode::Addressing;
-use crate::cpu::opcode::Instruction;
-use crate::cpu::opcode::Opcode;
 use crate::memory::Memory;
 use crate::rom::Cartbridge;
 use crate::ppu::Ppu;

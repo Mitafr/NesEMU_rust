@@ -1,12 +1,11 @@
 use crate::memory::Memory;
-use std::fs::File;
+use std::path::Path;
 use std::str;
-use std::io::prelude::*;
 
 pub struct Cartbridge {
-    path: String,
     program: Vec<u8>,
     character: Vec<u8>,
+    mapper: u8,
     size: usize,
     offset: usize,
 }
@@ -14,25 +13,26 @@ pub struct Cartbridge {
 impl Cartbridge {
     pub fn new() -> Cartbridge {
         Cartbridge {
-            path: String::new(),
             program: Vec::new(),
             character: Vec::new(),
+            mapper: 0,
             size: 0,
             offset: 0x8000,
         }
     }
     pub fn read_file(&mut self, path: String) -> Vec<u8> {
-        self.path = path;
-        println!("Loading : {}", self.path);
-        let mut f = File::open(&self.path).expect(&format!("File not found: {}", self.path));
-        let mut buffer = [0u8; 0xFFFF];
-        if let Ok(bytes_read) = f.read(&mut buffer) {
-            bytes_read
-        } else {
-            0
-        };
-        buffer.to_vec()
+        println!("Loading : {}", path);
+        match std::fs::read(Path::new(&path)) {
+            Result::Ok(rom) => {
+                return rom;
+            },
+            Result::Err(err) => {
+                eprintln!("Cannot open .nes file: {}", path);
+                panic!(err);
+            }
+        }
     }
+    #[allow(dead_code)]
     pub fn load_from_vec(&mut self, program: &Vec<u8>) {
         for i in program.iter() {
             self.program.push(*i);
@@ -40,6 +40,7 @@ impl Cartbridge {
         self.program.resize(0x8000, 0u8);
         self.size = 0x8000;
     }
+    #[allow(dead_code)]
     pub fn get_program(&mut self) -> &mut Vec<u8> {
         &mut self.program
     }
@@ -62,13 +63,17 @@ impl Cartbridge {
         let character_rom_start = 0x0010 + prg_pages * 0x4000; // 32784
         let character_rom_end = character_rom_start + chr_pages * 0x2000; //40976
         self.program = data[0x0010..0x0010 + character_rom_start].to_vec();
+        println!("PRG-ROM: {}", self.program.len());
         self.character = data[character_rom_start..character_rom_end].to_vec();
+        println!("CHR-ROM: {}", self.character.len());
         self.size = self.program.len();
+        self.mapper = 0;
         if prg_pages == 1 {
             self.offset = 0xC000;
         }
         self
     }
+    #[allow(dead_code)]
     pub fn set_offset(&mut self, value: usize) {
         self.offset = value;
     }

@@ -1,5 +1,3 @@
-use crate::ppu::mem::PpuMem;
-
 use std::fmt;
 use std::ops::Deref;
 
@@ -21,8 +19,8 @@ impl Tile {
             let tilelow = slice[j];
             let tilehi = slice[j + 8];
             for k in 0..8 {
-                let vv = (((0b1000_0000 >> k) & tilelow) / (0x80 >> k)) << 1;
-                let vvv = ((0b1000_0000 >> k) & tilehi) / (0x80 >> k);
+                let vv = (((0x80 >> k) & tilelow) / (0x80 >> k)) << 1;
+                let vvv = ((0x80 >> k) & tilehi) / (0x80 >> k);
                 self.pixels[j as usize][k as usize] = vv + vvv;
             }
             self.index = index;
@@ -30,9 +28,6 @@ impl Tile {
     }
     pub fn get_pixels(&self) -> &Vec<Vec<u8>> {
         &self.pixels
-    }
-    pub fn write_sprite(&mut self, v: u16) {
-        //self.sprites.push(v);
     }
     pub fn set_index(&mut self, v: usize) {
         self.index = v;
@@ -43,7 +38,7 @@ impl fmt::Display for Tile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "TILE")?;
         for (k,i) in self.pixels.iter().enumerate() {
-            for (l,j) in i.iter().enumerate() {
+            for (l,_j) in i.iter().enumerate() {
                 write!(f, "{} ", self.pixels[k][l])?;
             }
             writeln!(f, "")?;

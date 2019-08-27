@@ -1,5 +1,5 @@
-use crate::memory::*;
 use crate::ppu::mem::PpuMem;
+use crate::ppu::sprite::SpriteMem;
 use crate::ppu::palette::PaletteVram;
 
 use std::fmt;
@@ -37,19 +37,23 @@ pub trait Register {
     fn get_ctrl_one(&self) -> u8;
 
     // $2002
-    fn get_status(&self) -> u8;
+    fn read_status(&mut self) -> u8;
+    fn get_status(& self) -> u8;
     fn get_oam_addr(&self) -> u8;
     fn get_oam_data(&self) -> u8;
     fn get_scroll(&self) -> u8;
     fn get_addr(&self) -> u8;
     fn get_data(&self) -> u8;
     fn get_oam_dma(&self) -> u8;
+    fn clear_vblank(&mut self) -> &mut Self;
+    fn set_vblank(&mut self) -> &mut Self;
+    fn clear_spritehit(&mut self) -> &mut Self;
 
     fn set_ctrl_zero(&mut self, v: u8) -> &mut Self;
     fn set_ctrl_one(&mut self, v: u8) -> &mut Self;
     fn set_status(&mut self, v: u8) -> &mut Self;
     fn set_oam_addr(&mut self, v: u8) -> &mut Self;
-    fn set_oam_data(&mut self, v: u8) -> &mut Self;
+    fn write_oam_data(&mut self, v: u8, spr_mem: &mut SpriteMem) -> &mut Self;
     fn set_scroll(&mut self, v: u8) -> &mut Self;
     fn set_addr(&mut self, v: u16) -> &mut Self;
     fn write_data<P: PaletteVram>(&mut self, v: u8, mem: &mut PpuMem, palette: &mut P) -> &mut Self;
@@ -57,8 +61,8 @@ pub trait Register {
 
     fn incr_addr(&mut self) -> &mut Self;
 
-    fn peek(&self, i: usize) -> u8;
-    fn write<P: PaletteVram>(&mut self, i: usize, v: u8, mem: &mut PpuMem, palette: &mut P) -> u8;
+    fn peek(&mut self, i: usize) -> u8;
+    fn write<P: PaletteVram>(&mut self, i: usize, v: u8, mem: &mut PpuMem, palette: &mut P, spr_mem: &mut SpriteMem) -> u8;
 }
 
 impl PpuRegister {
@@ -131,11 +135,28 @@ impl Register for PpuRegister {
     }
 
 
-
-    fn get_status(&self) -> u8 {
-        // TODO
+    fn clear_vblank(&mut self) -> &mut Self {
+        self.r_status &= 0b0111_1111;
+        self
+    }
+    fn set_vblank(&mut self) -> &mut Self {
+        self.r_status |= 0x80;
+        self
+    }
+ 
+    fn clear_spritehit(&mut self) -> &mut Self {
+        self.r_status &= 0b1011_1111;
+        self
+    }
+    fn read_status(&mut self) -> u8 {
         let data = self.r_status;
+        self.r_writing_lower_addr = false;
+        self.clear_vblank().clear_spritehit();
         data
+
+    }
+    fn get_status(&self) -> u8 {
+        self.r_status
     }
     fn get_oam_addr(&self) -> u8 {
         self.r_oam_addr
@@ -172,8 +193,10 @@ impl Register for PpuRegister {
         self.r_oam_addr = v;
         self
     }
-    fn set_oam_data(&mut self, v: u8) -> &mut Self {
+    fn write_oam_data(&mut self, v: u8, spr_mem: &mut SpriteMem) -> &mut Self {
         self.r_oam_data = v;
+        spr_mem.write_data(self.get_oam_addr() as usize, v);
+        self.r_oam_addr += 1;
         self
     }
     fn set_scroll(&mut self, v: u8) -> &mut Self {
@@ -200,12 +223,11 @@ impl Register for PpuRegister {
         self.r_oam_dma = v;
         self
     }
-    fn peek(&self, i: usize) -> u8 {
-        println!("Reading PPU at {:x?}", i);
+    fn peek(&mut self, i: usize) -> u8 {
         match i {
             0x2000 => self.get_ctrl_zero(),
             0x2001 => self.get_ctrl_one(),
-            0x2002 => self.get_status(),
+            0x2002 => self.read_status(),
             0x2003 => self.get_oam_addr(),
             0x2004 => self.get_oam_data(),
             0x2005 => self.get_scroll(),
@@ -216,14 +238,13 @@ impl Register for PpuRegister {
             }
         }
     }
-    fn write<P: PaletteVram>(&mut self, i: usize, v: u8, mem: &mut PpuMem, palette: &mut P) -> u8 {
-        println!("Writing PPU at {:x?}, value: {:x?}", i, v);
+    fn write<P: PaletteVram>(&mut self, i: usize, v: u8, mem: &mut PpuMem, palette: &mut P, spr_mem: &mut SpriteMem) -> u8 {
         match i {
             0x2000 => self.set_ctrl_zero(v),
             0x2001 => self.set_ctrl_one(v),
             0x2002 => self.set_status(v),
             0x2003 => self.set_oam_addr(v),
-            0x2004 => self.set_oam_data(v),
+            0x2004 => self.write_oam_data(v, spr_mem),
             0x2005 => self.set_scroll(v),
             0x2006 => self.set_addr(v as u16),
             0x2007 => self.write_data(v, mem, palette),
@@ -261,6 +282,8 @@ impl fmt::Display for PpuRegister {
         writeln!(f, "+---------------------+-----------------+")?;
         writeln!(f, "|STATUS_2002   \t => {:08b}", self.get_status())?;
         writeln!(f, "|VRAM_ADDR_2006\t => {:08b}", self.get_addr())?;
+        writeln!(f, "+---+-----------+-----------------+")?;
+        writeln!(f, "|OAM\t => {:08b}", self.r_oam_data)?;
         Ok(())
     }
 }
