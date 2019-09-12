@@ -18,7 +18,7 @@ impl PpuMem {
     pub fn peek(&mut self, i: usize) -> u8 {
         match i {
             0x0000...0x1FFF => self.cram[i],
-            0x2000...0x3FFF => self.vram[i.wrapping_sub(0x2000)],
+            0x2000...0x3FFF => self.vram[i - 0x2000],
             _ => 0
         }
     }

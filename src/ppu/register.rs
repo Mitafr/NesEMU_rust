@@ -12,15 +12,15 @@ pub struct PpuRegister {
     r_oam_data: u8,
     r_scroll: u8,
     r_addr: u16,
+    r_t_addr: u16,
     r_data: u8,
     r_oam_dma: u8,
-
     r_writing_lower_addr: bool,
 }
 
 pub trait Register {
     // CTRL $2000
-    fn get_name_table(&self) -> u8;
+    fn get_nametable_address(&self) -> usize;
     fn get_incr_value(&self) -> u8;
     fn get_sprite_table(&self) -> u8;
     fn get_background_table(&self) -> u8;
@@ -40,10 +40,10 @@ pub trait Register {
     fn read_status(&mut self) -> u8;
     fn get_status(& self) -> u8;
     fn get_oam_addr(&self) -> u8;
-    fn get_oam_data(&self) -> u8;
+    fn read_oam(&self) -> u8;
     fn get_scroll(&self) -> u8;
-    fn get_addr(&self) -> u8;
-    fn get_data(&self) -> u8;
+    fn get_addr(&self) -> u16;
+    fn read_data(&mut self) -> u8;
     fn get_oam_dma(&self) -> u8;
     fn clear_vblank(&mut self) -> &mut Self;
     fn set_vblank(&mut self) -> &mut Self;
@@ -75,6 +75,7 @@ impl PpuRegister {
             r_oam_data: 0x00,
             r_scroll: 0x00,
             r_addr: 0x00,
+            r_t_addr: 0x00,
             r_data: 0x00,
             r_oam_dma: 0x00,
             r_writing_lower_addr: false,
@@ -83,8 +84,14 @@ impl PpuRegister {
 }
 
 impl Register for PpuRegister {
-    fn get_name_table(&self) -> u8 {
-        (self.r_ctrl_zero >> 0) & 0x03
+    fn get_nametable_address(&self) -> usize {
+        match (self.r_ctrl_zero >> 0) & 0x03 {
+            0 => 0x2000,
+            1 => 0x2400,
+            2 => 0x2800,
+            3 => 0x2C00,
+            _ => 0
+        }
     }
     fn get_incr_value(&self) -> u8 {
         if (self.r_ctrl_zero >> 2) & 0x01 == 0x0 {
@@ -153,7 +160,6 @@ impl Register for PpuRegister {
         self.r_writing_lower_addr = false;
         self.clear_vblank().clear_spritehit();
         data
-
     }
     fn get_status(&self) -> u8 {
         self.r_status
@@ -161,16 +167,17 @@ impl Register for PpuRegister {
     fn get_oam_addr(&self) -> u8 {
         self.r_oam_addr
     }
-    fn get_oam_data(&self) -> u8 {
+    fn read_oam(&self) -> u8 {
         self.r_oam_data
     }
     fn get_scroll(&self) -> u8 {
         self.r_scroll
     }
-    fn get_addr(&self) -> u8{
-        self.r_addr as u8
+    fn get_addr(&self) -> u16 {
+        self.r_addr
     }
-    fn get_data(&self) -> u8 {
+    fn read_data(&mut self) -> u8 {
+        self.incr_addr();
         self.r_data
     }
     fn get_oam_dma(&self) -> u8 {
@@ -178,7 +185,8 @@ impl Register for PpuRegister {
     }
 
     fn set_ctrl_zero(&mut self, v: u8) -> &mut Self {
-        self.r_ctrl_zero = v;
+        self.r_ctrl_zero = v & 0xFC;
+        self.r_t_addr = (self.r_t_addr & 0x73FF) | ((v & 3) as u16) << 10;
         self
     }
     fn set_ctrl_one(&mut self, v: u8) -> &mut Self {
@@ -205,10 +213,11 @@ impl Register for PpuRegister {
     }
     fn set_addr(&mut self, v: u16) -> &mut Self {
         if self.r_writing_lower_addr {
-            self.r_addr += v;
+            self.r_t_addr = self.r_t_addr & 0xFF00 | v;
+            self.r_addr = self.r_t_addr;
             self.r_writing_lower_addr = false;
         } else {
-            self.r_addr = v << 8;
+            self.r_t_addr = self.r_t_addr & 0x00FF | ((v & 0x3F) as u16) << 8;
             self.r_writing_lower_addr = true;
         }
         self
@@ -225,14 +234,9 @@ impl Register for PpuRegister {
     }
     fn peek(&mut self, i: usize) -> u8 {
         match i {
-            0x2000 => self.get_ctrl_zero(),
-            0x2001 => self.get_ctrl_one(),
             0x2002 => self.read_status(),
-            0x2003 => self.get_oam_addr(),
-            0x2004 => self.get_oam_data(),
-            0x2005 => self.get_scroll(),
-            0x2006 => self.get_addr(),
-            0x2007 => self.get_data(),
+            0x2004 => self.read_oam(),
+            0x2007 => self.read_data(),
             _ => {
                 panic!("Invalid read PPU at {:x?}", i);
             }
@@ -242,7 +246,6 @@ impl Register for PpuRegister {
         match i {
             0x2000 => self.set_ctrl_zero(v),
             0x2001 => self.set_ctrl_one(v),
-            0x2002 => self.set_status(v),
             0x2003 => self.set_oam_addr(v),
             0x2004 => self.write_oam_data(v, spr_mem),
             0x2005 => self.set_scroll(v),
@@ -263,7 +266,7 @@ impl fmt::Display for PpuRegister {
         writeln!(f, "|CTRL_2000 => {:08b}", self.get_ctrl_zero())?;
         writeln!(f, "|bit|libelle       |value            |")?;
         writeln!(f, "+---+--------------+-----------------+")?;
-        writeln!(f, "| 1 |NAME_TABLE   \t => {:x?}", self.get_name_table())?;
+        writeln!(f, "| 1 |NAME_TABLE   \t => {:x?}", self.get_nametable_address())?;
         writeln!(f, "| 2 |INCR_VALUE   \t => {:x?}", self.get_incr_value())?;
         writeln!(f, "| 3 |SPRITE_TABLE \t => {:x?}", self.get_sprite_table())?;
         writeln!(f, "| 4 |BCKGRND_TABLE\t => {:x?}", self.get_background_table())?;

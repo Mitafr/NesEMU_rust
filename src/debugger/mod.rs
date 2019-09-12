@@ -7,9 +7,9 @@ use crate::ppu::palette::PaletteVram;
 use crate::ppu::palette::Palette;
 use crate::ppu::tile::Tile;
 
-const SCREEN_HEIGHT: u32 = 248;
+const SCREEN_HEIGHT: u32 = 240;
 const SCREEN_WIDTH: u32 = 256 * 2;
-const SCALE: u32 = 3;
+const SCALE: u32 = 2;
 
 #[derive(PartialEq)]
 pub enum DebuggerStatus {
@@ -20,7 +20,7 @@ pub enum DebuggerStatus {
 pub struct PpuDebugger {
     renderer: Canvas<Window>,
     display: [u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
-    texture: sdl2::render::Texture<'static>,
+    texture: Texture,
     is_open: bool,
 }
 
@@ -29,7 +29,7 @@ impl PpuDebugger {
         let video_subsys = sdl_context.video().unwrap();
         let window = video_subsys.window("Debugger", SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE)
             .position_centered()
-            .set_window_flags(8u32 | 16u32)
+            .set_window_flags(8u32)
             .build()
             .map_err(|e| e.to_string())
             .unwrap();
@@ -39,12 +39,11 @@ impl PpuDebugger {
             .build()
             .map_err(|e| e.to_string())
             .unwrap();
-        let texture_creator = &canvas.texture_creator() as *const TextureCreator<WindowContext>;
-        let texture = unsafe {&*texture_creator}.create_texture(PixelFormatEnum::RGB24, TextureAccess::Streaming, SCREEN_WIDTH, SCREEN_HEIGHT).unwrap();
+        let texture_creator = canvas.texture_creator();
         PpuDebugger {
             renderer: canvas,
-            display: [0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
-            texture: texture,
+            display: [222u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
+            texture: texture_creator.create_texture(PixelFormatEnum::RGB24, TextureAccess::Streaming, SCREEN_WIDTH, SCREEN_HEIGHT).unwrap(),
             is_open: false,
         }
     }

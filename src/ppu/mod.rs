@@ -36,14 +36,14 @@ pub enum PpuStatus {
 const CYCLE_PER_LINE: u16 = 341;
 
 pub struct Ppu {
-    register: PpuRegister,
+    pub register: PpuRegister,
     pub mem: PpuMem,
     pub spr_mem: SpriteMem,
     pub sprites: SpriteSet,
     pub background: Background,
     pub tileset: Box<Vec<Tile>>,
     pub palette: Palette,
-    cycle: u16,
+    dot: u16,
     line: u16,
     updated: bool,
 }
@@ -58,7 +58,7 @@ impl Ppu {
             spr_mem: SpriteMem::new(),
             sprites: SpriteSet::new(),
             palette: Palette::new(),
-            cycle: 0,
+            dot: 0,
             line: 0,
             updated: false,
         }
@@ -68,53 +68,30 @@ impl Ppu {
     }
     pub fn write(&mut self, i: usize, v: u8) -> u8 {
         self.updated = true;
-        println!("Updated");
         self.register.write(i, v, &mut self.mem, &mut self.palette, &mut self.spr_mem)
     }
     pub fn init(&mut self, rom: &mut Cartbridge) {
         self.mem.set_cram(rom.get_character().to_vec());
-        self.build_tiles();
-    }
-    fn build_tiles(&mut self) {
-        let mut i = 0;
-        let offset = 0x1000;
-        if self.register.get_background_table() == 1 {
-            i += 0x1000;
-            // offset = 0x1000;
-        }
-        while i < offset + 0x1000 {
-            let mut v = [0; 16];
-            for j in 0..16 {
-                v[j] = self.mem.peek(i as usize);
-                i += 1;
-            }
-            let mut tile = Tile::new();
-            tile.build_tile(&v, i);
-            self.tileset.push(tile);
-        }
     }
     pub fn run(&mut self, cycle: u16) -> PpuStatus {
-        let cycle = self.cycle + cycle;
-        if self.cycle < CYCLE_PER_LINE {
-            self.cycle = cycle;
-            self.updated = false;
+        let current_cycle = self.dot;
+        if current_cycle == 0 {
+            self.dot = 1;
             return PpuStatus::WAITING;
         }
-        self.cycle = cycle - CYCLE_PER_LINE;
-        self.line += 1;
         if self.line == 0 {
             self.background.clear();
         }
-        // TODO:
-        // build all background at one time (should be line by line)
-        // if self.line < 240 {
-        //      self.background.build_line(&mut self.mem, &mut self.register, &mut self.tileset);
-        // }
+        /*println!("Dot : {}", self.dot);
+        println!("Line : {}", self.line);*/
         if self.line < 240 {
-            println!("Rendering line {}", self.line);
-        }
-        if self.line == 240 {
-            self.background.build(&mut self.mem, &mut self.register, &mut self.tileset);
+            match current_cycle % 8 {
+                1 => self.background.fetch_nametable(self.dot % 256, self.line % 240, &mut self.mem, &mut self.register),
+                3 => self.background.fetch_attribute(self.dot % 256, self.line % 240, &mut self.mem, &mut self.register),
+                5 => self.background.fetch_loworder_byte(self.dot % 256, self.line % 240, &mut self.mem, &mut self.register),
+                7 => self.background.fetch_highorder_byte(self.dot % 256, self.line % 240, &mut self.mem, &mut self.register),
+                _ => {}
+            }
         }
         if self.line == 241 {
             self.register.set_vblank();
@@ -126,6 +103,14 @@ impl Ppu {
             self.register.clear_spritehit();
             self.sprites.build(&mut self.spr_mem, &mut self.register, &mut self.mem);
             return PpuStatus::RENDERING;
+        }
+        self.dot += 1;
+        if current_cycle > 340 {
+            self.dot = 0;
+            self.line += 1;
+            if self.line > 261 {
+                self.line = 0;
+            }
         }
         PpuStatus::PROCESSING
     }
@@ -144,7 +129,7 @@ impl fmt::Display for Ppu {
         writeln!(f, "{}", self.register)?;
         writeln!(f, "\n|----------PPU PALETTE--------------|")?;
         writeln!(f, "{}", self.palette)?;
-        writeln!(f, "End ppu cycle : {}", self.cycle)?;
+        writeln!(f, "End ppu cycle : {}", self.dot)?;
         writeln!(f, "Last line rendered : {}", self.line)?;
         writeln!(f, "SpriteSet size: {}", self.sprites.len())?;
         write!(f, "TileSet size : {}", self.tileset.len())?;

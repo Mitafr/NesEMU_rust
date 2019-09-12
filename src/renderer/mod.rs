@@ -15,7 +15,7 @@ const SCREEN_WIDTH: u32 = 256;
 pub struct Renderer {
     renderer: Canvas<Window>,
     display: [u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
-    texture: sdl2::render::Texture<'static>,
+    texture: sdl2::render::Texture,
 }
 
 impl Renderer {
@@ -33,12 +33,11 @@ impl Renderer {
             .build()
             .map_err(|e| e.to_string())
             .unwrap();
-        let texture_creator = &canvas.texture_creator() as *const TextureCreator<WindowContext>;
-        let texture = unsafe {&*texture_creator}.create_texture(PixelFormatEnum::RGB24, TextureAccess::Streaming, SCREEN_WIDTH, SCREEN_HEIGHT).unwrap();
+        let texture_creator = canvas.texture_creator();
         Renderer {
             renderer: canvas,
             display: [0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
-            texture: texture,
+            texture: texture_creator.create_texture(PixelFormatEnum::RGB24, TextureAccess::Streaming, SCREEN_WIDTH, SCREEN_HEIGHT).unwrap(),
         }
     }
     pub fn draw_window(&mut self) {
@@ -47,9 +46,6 @@ impl Renderer {
         self.renderer.copy(&self.texture, None, None).unwrap();
         self.renderer.present();
     }
-    /*pub fn has_pixel(&mut self, x: u32, y: u32) -> bool {
-        self.display[get_coords(x, y)] != 0
-    }*/
     pub fn set_pixel(&mut self, x: u32, y: u32, r: u8, g: u8, b: u8) {
         let coords = get_coords(x, y);
         self.display[coords as usize] = r;

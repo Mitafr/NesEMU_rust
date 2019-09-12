@@ -9,85 +9,7 @@ use crate::cpu::opcode::*;
 extern crate rand;
 
 use rand::Rng;
-
-fn fetch_absolute_x<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let x = reg.get_x();
-    let addr = fetch_word(reg, bus);
-    addr.wrapping_add(x as u16)
-}
-
-fn fetch_absolute_y<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let y = reg.get_y();
-    let addr = fetch_word(reg, bus);
-    addr.wrapping_add(y as u16)
-}
-
-fn fetch_zeropage_x<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let value = fetch(reg, bus);
-    let x = reg.get_x();
-    value.wrapping_add(x as u16)
-}
-fn fetch_zeropage_y<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let value = fetch(reg, bus);
-    let y = reg.get_y();
-    value.wrapping_add(y as u16)
-}
-
-fn fetch_relative_address<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let a = fetch(reg, bus);
-    if a < 0x80 {
-        a + reg.get_pc() as u16
-    } else {
-        a + reg.get_pc() as u16 - 0x100
-    }
-}
-fn fetch_indirect_absolute<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let addr = fetch_word(reg, bus);
-    let upper = bus.peek((addr as usize) | ((addr) + 1) as usize) as u16;
-    let low = bus.peek(addr as usize) as u16;
-    low + (upper << 8) as u16
-}
-fn fetch_indexed_indirect<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let x = reg.get_x() as u16;
-    let addr = fetch(reg, bus).wrapping_add(x);
-    let hi = bus.peek(addr as usize) as u16;
-    let low = bus.peek((addr + x) as usize) as u16;
-    ((low << 8) | hi) as u16
-}
-fn fetch_indirect_indexed<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let addr = fetch(reg, bus);
-    let base_addr = (bus.peek(addr as usize) as usize) + ((bus.peek(((addr + 1) & 0x00FF) as usize) as usize) * 0x100);
-    ((base_addr + (reg.get_y() as usize)) & 0xFFFF) as u16
-}
-fn fetch_operand<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B, opcode: &Opcode) -> u16 {
-    match opcode.mode {
-        Addressing::Accumulator => 0x0000,
-        Addressing::Implied => 0x0000,
-        Addressing::Immediate => fetch(reg, bus),
-        Addressing::ZeroPage => fetch(reg, bus),
-        Addressing::ZeroPageX => fetch_zeropage_x(reg, bus),
-        Addressing::ZeroPageY => fetch_zeropage_y(reg, bus),
-        Addressing::Absolute => fetch_word(reg, bus),
-        Addressing::AbsoluteX => fetch_absolute_x(reg, bus),
-        Addressing::AbsoluteY => fetch_absolute_y(reg, bus),
-        Addressing::Relative => fetch_relative_address(reg, bus),
-        Addressing::IndirectAbsolute => fetch_indirect_absolute(reg, bus),
-        Addressing::IndexedIndirect => fetch_indexed_indirect(reg, bus),
-        Addressing::IndirectIndexed => fetch_indirect_indexed(reg, bus),
-    }
-}
-fn fetch_word<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let hi = bus.peek(reg.get_pc() as usize) as u16;
-    reg.incr_pc();
-    let low = bus.peek(reg.get_pc() as usize) as u16;
-    reg.incr_pc();
-    ((low << 8) | hi) as u16
-}
-fn fetch<T: CpuRegister, B: Bus>(reg: &mut T, bus: &mut B) -> u16 {
-    let value = bus.peek(reg.get_pc() as usize) as u16;
-    reg.incr_pc();
-    value
-}
+use std::fmt;
 
 #[derive(PartialEq)]
 pub enum EmulationStatus {
@@ -98,60 +20,166 @@ pub enum EmulationStatus {
 
 pub struct Cpu {
     pub opcode_counter: u32,
+    register: Register,
 }
 
 impl Cpu {
     pub fn new() -> Cpu {
+        let mut register = Register::new();
+        register.set_sp(0xFF);
+        register.set_flag(StatusFlags::INTERRUPT, true);
         Cpu {
             opcode_counter: 0,
+            register: Register::new(),
         }
     }
-    pub fn reset<B: Bus, R: CpuRegister>(&mut self, bus: &mut B, register: &mut R) {
+    pub fn reset<B: Bus>(&mut self, bus: &mut B) {
         let hi = bus.peek(0xFFFC) as u16;
         let low = bus.peek(0xFFFC + 1) as u16;
         let pc = ((low << 8) | hi) as u16;
-        register.set_pc(pc);
+        self.register.set_pc(pc);
+        self.register.set_pc(pc);
     }
     fn set_random_number<B: Bus>(&mut self, bus: &mut B) {
         let mut rng = rand::thread_rng();
         let value: u8 = rng.gen_range(0, 255);
         bus.write(0x00FE, value);
     }
-    pub fn run<B: Bus, R: CpuRegister>(&mut self, bus: &mut B, register: &mut R) -> (u16, EmulationStatus) {
+    pub fn run<B: Bus>(&mut self, bus: &mut B) -> (u16, EmulationStatus) {
         self.set_random_number(bus);
-        let value = bus.peek(register.get_pc() as usize);
-        register.incr_pc();
+        let pc = self.register.get_pc();
+        let value = bus.peek(pc as usize);
+        self.register.incr_pc();
         let opcode = opcode::OPCODES.get(&value).unwrap();
-        let value = fetch_operand(register, bus, opcode);
-        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), opcode, value);
+        let value = self.fetch_operand(bus, opcode);
+        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", self.register.get_pc(), opcode, value);
+        println!("A: {:x?},X: {:x?},Y: {:x?},P: {:x?},SP: {:x?},PC: {:x?},",
+            self.register.get_a(),
+            self.register.get_x(),
+            self.register.get_y(),
+            self.register.get_sr(),
+            self.register.get_sp(),
+            pc
+        );
         self.opcode_counter += 1;
-        (opcode.cycle, self.execute_op(value, bus, register, opcode))
+        (opcode.cycle as u16, self.execute_op(value, bus, opcode))
     }
     #[allow(dead_code)]
-    fn run_instructions<B: Bus, R: CpuRegister>(&mut self, n: usize, bus: &mut B, register: &mut R) {
+    fn run_instructions<B: Bus>(&mut self, n: usize, bus: &mut B) {
         for _i in 0..n {
             self.set_random_number(bus);
-            let value = bus.peek(register.get_pc() as usize);
-            register.incr_pc();
+            let value = bus.peek(self.register.get_pc() as usize);
+            self.register.incr_pc();
             let opcode = opcode::OPCODES.get(&value).unwrap();
-            let value = fetch_operand(register, bus, opcode);
-            println!("OPCODE at {:x?}: {:x?}, value: {:x?}", register.get_pc(), opcode, value);
-            self.execute_op(value, bus, register, opcode);
+            let value = self.fetch_operand(bus, opcode);
+            println!("OPCODE at {:x?}: {:x?}, value: {:x?}", self.register.get_pc(), opcode, value);
+            println!("A: {:x?},X: {:x?},Y: {:x?},P: {:x?},SP: {:x?},PC: {:x?},",
+                self.register.get_a(),
+                self.register.get_x(),
+                self.register.get_y(),
+                self.register.get_sr(),
+                self.register.get_sp(),
+                self.register.get_pc()
+            );
+            self.execute_op(value, bus, opcode);
         }
     }
-    fn execute_op<B: Bus, R: CpuRegister>(&self, value: u16, bus: &mut B, register: &mut R, opcode: &Opcode) -> EmulationStatus {
+
+    fn fetch_absolute_x<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let x = self.register.get_x();
+        let addr = self.fetch_word(bus);
+        addr.wrapping_add(x as u16)
+    }
+
+    fn fetch_absolute_y<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let y = self.register.get_y();
+        let addr = self.fetch_word(bus);
+        addr.wrapping_add(y as u16)
+    }
+
+    fn fetch_zeropage_x<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let value = self.fetch(bus);
+        let x = self.register.get_x();
+        value.wrapping_add(x as u16)
+    }
+    fn fetch_zeropage_y<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let value = self.fetch(bus);
+        let y = self.register.get_y();
+        value.wrapping_add(y as u16)
+    }
+
+    fn fetch_relative_address<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let a = self.fetch(bus);
+        if a < 0x80 {
+            a + self.register.get_pc() as u16
+        } else {
+            a + self.register.get_pc() as u16 - 0x100
+        }
+    }
+    fn fetch_indirect_absolute<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let addr = self.fetch_word(bus);
+        let upper = bus.peek((addr as usize) | ((addr) + 1) as usize) as u16;
+        let low = bus.peek(addr as usize) as u16;
+        low + (upper << 8) as u16
+    }
+    fn fetch_indexed_indirect<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let x = self.register.get_x() as u16;
+        let addr = self.fetch(bus).wrapping_add(x);
+        let hi = bus.peek(addr as usize) as u16;
+        let low = bus.peek((addr + x) as usize) as u16;
+        ((low << 8) | hi) as u16
+    }
+    fn fetch_indirect_indexed<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let addr = self.fetch(bus);
+        let base_addr = (bus.peek(addr as usize) as usize) + ((bus.peek(((addr + 1) & 0x00FF) as usize) as usize) * 0x100);
+        ((base_addr + (self.register.get_y() as usize)) & 0xFFFF) as u16
+    }
+    fn fetch_operand<B: Bus>(&mut self, bus: &mut B, opcode: &Opcode) -> u16 {
+        match opcode.mode {
+            Addressing::Accumulator => 0x0000,
+            Addressing::Implied => 0x0000,
+            Addressing::Immediate => self.fetch(bus),
+            Addressing::ZeroPage => self.fetch(bus),
+            Addressing::ZeroPageX => self.fetch_zeropage_x(bus),
+            Addressing::ZeroPageY => self.fetch_zeropage_y(bus),
+            Addressing::Absolute => self.fetch_word(bus),
+            Addressing::AbsoluteX => {
+                self.fetch_absolute_x(bus)
+            }
+            Addressing::AbsoluteY => self.fetch_absolute_y(bus),
+            Addressing::Relative => self.fetch_relative_address(bus),
+            Addressing::IndirectAbsolute => self.fetch_indirect_absolute(bus),
+            Addressing::IndexedIndirect => self.fetch_indexed_indirect(bus),
+            Addressing::IndirectIndexed => self.fetch_indirect_indexed(bus),
+        }
+    }
+    fn fetch_word<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let hi = bus.peek(self.register.get_pc() as usize) as u16;
+        self.register.incr_pc();
+        let low = bus.peek(self.register.get_pc() as usize) as u16;
+        self.register.incr_pc();
+        ((low << 8) | hi) as u16
+    }
+    fn fetch<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let value = bus.peek(self.register.get_pc() as usize) as u16;
+        self.register.incr_pc();
+        value
+    }
+
+
+    fn execute_op<B: Bus>(&mut self, value: u16, bus: &mut B, opcode: &Opcode) -> EmulationStatus {
         match opcode.name {
             Instruction::ADC => {
                 let mut res: (u8, bool);
                 if opcode.mode == Addressing::Immediate {
-                    res = register.get_a().overflowing_add(value as u8);
+                    res = self.register.get_a().overflowing_add(value as u8);
                 } else {
-                    res = register.get_a().overflowing_add(bus.peek(value as usize));
+                    res = self.register.get_a().overflowing_add(bus.peek(value as usize));
                 }
-                if register.get_flag(StatusFlags::CARRY) {
-                    res.0 += 1;
+                if self.register.get_flag(StatusFlags::CARRY) {
+                    res.0.wrapping_add(1);
                 }
-                register
+                self.register
                     .set_a(res.0)
                     .set_flag(StatusFlags::CARRY, res.1)
                     .set_flag(StatusFlags::OVERFLOW, res.1)
@@ -159,126 +187,126 @@ impl Cpu {
                     .set_flag(StatusFlags::ZERO, res.0 == 0);
             }
             Instruction::AND => {
-                let a = register.get_a();
+                let a = self.register.get_a();
                 if opcode.mode == Addressing::Immediate {
-                    register.set_a(a & value as u8);
+                    self.register.set_a(a & value as u8);
                 } else {
-                    register.set_a(a & bus.peek(value as usize) as u8);
+                    self.register.set_a(a & bus.peek(value as usize) as u8);
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, value & (1 << 7) != 0)
                     .set_flag(StatusFlags::ZERO, value == 0);
             }
             Instruction::ASL => {
                 let old: u8;
                 if opcode.mode == Addressing::Accumulator {
-                    old = register.get_a();
-                    let a = register.set_a(old << 1).get_a();
-                    register
+                    old = self.register.get_a();
+                    let a = self.register.set_a(old << 1).get_a();
+                    self.register
                         .set_flag(StatusFlags::ZERO, a == 0)
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0);
                 } else {
                     old = bus.peek(value as usize);
                     let m = bus.write(value as usize, old << 1);
-                    register
+                    self.register
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
                 }
-                register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
+                self.register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
             }
             Instruction::BCC => {
-                if !register.get_flag(StatusFlags::CARRY) {
-                    register.set_pc(value);
+                if !self.register.get_flag(StatusFlags::CARRY) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BCS => {
-                if register.get_flag(StatusFlags::CARRY) {
-                    register.set_pc(value);
+                if self.register.get_flag(StatusFlags::CARRY) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BEQ => {
-                if register.get_flag(StatusFlags::ZERO) {
-                    register.set_pc(value);
+                if self.register.get_flag(StatusFlags::ZERO) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BIT => {
-                let value = register.get_a() & value as u8;
-                register
+                let value = self.register.get_a() & value as u8;
+                self.register
                     .set_flag(StatusFlags::ZERO, value == 0)
                     .set_flag(StatusFlags::OVERFLOW, value & (1 << 6) != 0)
                     .set_flag(StatusFlags::NEGATIVE, value & (1 << 7) != 0);
             }
             Instruction::BMI => {
-                if register.get_flag(StatusFlags::NEGATIVE) {
-                    register.set_pc(value);
+                if self.register.get_flag(StatusFlags::NEGATIVE) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BNE => {
-                if !register.get_flag(StatusFlags::ZERO) {
-                    register.set_pc(value);
+                if !self.register.get_flag(StatusFlags::ZERO) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BPL => {
-                if !register.get_flag(StatusFlags::NEGATIVE) {
-                    register.set_pc(value);
+                if !self.register.get_flag(StatusFlags::NEGATIVE) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BRK => {
-                register
+                self.register
                     .set_flag(StatusFlags::BREAK, true)
                     .set_flag(StatusFlags::INTERRUPT, true);
                 return EmulationStatus::BREAK;
             }
             Instruction::BVC => {
-                if !register.get_flag(StatusFlags::OVERFLOW) {
-                    register.set_pc(value);
+                if !self.register.get_flag(StatusFlags::OVERFLOW) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::BVS => {
-                if register.get_flag(StatusFlags::OVERFLOW) {
-                    register.set_pc(value);
+                if self.register.get_flag(StatusFlags::OVERFLOW) {
+                    self.register.set_pc(value);
                 }
             }
             Instruction::CLC => {
-                register.set_flag(StatusFlags::CARRY, false);
+                self.register.set_flag(StatusFlags::CARRY, false);
             }
             Instruction::CLD => {
-                register.set_flag(StatusFlags::DECIMAL, false);
+                self.register.set_flag(StatusFlags::DECIMAL, false);
             }
             Instruction::CLI => {
-                register.set_flag(StatusFlags::INTERRUPT, false);
+                self.register.set_flag(StatusFlags::INTERRUPT, false);
             }
             Instruction::CLV => {
-                register.set_flag(StatusFlags::OVERFLOW, false);
+                self.register.set_flag(StatusFlags::OVERFLOW, false);
             }
             Instruction::CMP => {
-                let a = register.get_a();
+                let a = self.register.get_a();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
                     m = bus.peek(value as usize) as u16;
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, a < m as u8)
                     .set_flag(StatusFlags::CARRY, a >= m as u8)
                     .set_flag(StatusFlags::ZERO, a == m as u8);
             }
             Instruction::CPX => {
-                let x = register.get_x();
+                let x = self.register.get_x();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
                     m = bus.peek(value as usize) as u16;
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, x < m as u8)
                     .set_flag(StatusFlags::CARRY, x >= m as u8)
                     .set_flag(StatusFlags::ZERO, x == m as u8);
             }
             Instruction::CPY => {
-                let y = register.get_y();
+                let y = self.register.get_y();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
                     m = bus.peek(value as usize) as u16;
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, y < m as u8)
                     .set_flag(StatusFlags::CARRY, y >= m as u8)
                     .set_flag(StatusFlags::ZERO, y == m as u8);
@@ -286,32 +314,32 @@ impl Cpu {
             Instruction::DEC => {
                 let res = bus.peek(value as usize).wrapping_sub(1);
                 bus.write(value as usize, res);
-                register
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
             }
             Instruction::DEX => {
-                let res = register.get_x();
-                register
+                let res = self.register.get_x();
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_x(res.wrapping_sub(1));
             }
             Instruction::DEY => {
-                let res = register.get_y();
-                register
+                let res = self.register.get_y();
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_y(res.wrapping_sub(1));
             }
             Instruction::EOR => {
-                let a = register.get_a();
+                let a = self.register.get_a();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
                     m = bus.peek(value as usize) as u16;
                 }
                 let res = a ^ m as u8;
-                register
+                self.register
                     .set_a(res)
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
@@ -319,39 +347,39 @@ impl Cpu {
             Instruction::INC => {
                 let res = bus.peek(value as usize).wrapping_add(1);
                 bus.write(value as usize, res);
-                register
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
             }
             Instruction::INX => {
-                let res = register.get_x();
-                register
+                let res = self.register.get_x();
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_x(res.wrapping_add(1));
             }
             Instruction::INY => {
-                let res = register.get_y();
-                register
+                let res = self.register.get_y();
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_y(res.wrapping_add(1));
             }
             Instruction::JMP => {
-                register.set_pc(value);
+                self.register.set_pc(value);
             }
             Instruction::JSR => {
-                let pc = register.get_pc() - 1;
-                register.push_stack((pc >> 8) as u8, bus);
-                register.push_stack(pc as u8, bus);
-                register.set_pc(value);
+                let pc = self.register.get_pc() - 1;
+                self.register.push_stack((pc >> 8) as u8, bus);
+                self.register.push_stack(pc as u8, bus);
+                self.register.set_pc(value);
             }
             Instruction::LDA => {
                 let mut res = value;
                 if opcode.mode != Addressing::Immediate {
                     res = bus.peek(value as usize) as u16;
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_a(res as u8);
@@ -361,7 +389,7 @@ impl Cpu {
                 if opcode.mode != Addressing::Immediate {
                     res = bus.peek(value as usize) as u16;
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_x(res as u8);
@@ -371,7 +399,7 @@ impl Cpu {
                 if opcode.mode != Addressing::Immediate {
                     res = bus.peek(value as usize) as u16;
                 }
-                register
+                self.register
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_y(res as u8);
@@ -379,119 +407,119 @@ impl Cpu {
             Instruction::LSR => {
                 let old: u8;
                 if opcode.mode == Addressing::Accumulator {
-                    old = register.get_a();
-                    let a = register.set_a(old >> 1).get_a();
-                    register
+                    old = self.register.get_a();
+                    let a = self.register.set_a(old >> 1).get_a();
+                    self.register
                         .set_flag(StatusFlags::ZERO, a == 0)
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0);
                 } else {
                     old = bus.peek(value as usize);
                     let m = bus.write(value as usize, old >> 1);
-                    register
+                    self.register
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
                 }
-                register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
+                self.register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
             }
             Instruction::NOP => {
                 return EmulationStatus::PROCESSING;
             }
             Instruction::ORA => {
-                let a = register.get_a();
+                let a = self.register.get_a();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
                     m = bus.peek(value as usize) as u16;
                 }
                 let res = a | m as u8;
-                register
+                self.register
                     .set_a(res)
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
 
             }
             Instruction::PHA => {
-                let a = register.get_a();
-                register.push_stack(a, bus);
+                let a = self.register.get_a();
+                self.register.push_stack(a, bus);
             }
             Instruction::PHP => {
-                let status = register.get_sp();
-                register.push_stack(status, bus);
+                let status = self.register.get_sp();
+                self.register.push_stack(status, bus);
             }
             Instruction::PLA => {
-                let res = register.pop_stack(bus);
-                register
+                let res = self.register.pop_stack(bus);
+                self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
                     .set_a(res as u8);
             }
             Instruction::PLP => {
-                let res = register.pop_stack(bus);
-                register.set_sp(res as u8);
+                let res = self.register.pop_stack(bus);
+                self.register.set_sp(res as u8);
             }
             Instruction::ROL => {
                 if opcode.mode == Addressing::Accumulator {
-                    let old = register.get_a();
+                    let old = self.register.get_a();
                     let mut a = old << 1;
-                    if register.get_flag(StatusFlags::CARRY) {
+                    if self.register.get_flag(StatusFlags::CARRY) {
                         a += 1;
                     }
-                    register
+                    self.register
                         .set_flag(StatusFlags::CARRY, old & (1 << 7) != 0)
                         .set_a(a);
                 } else {
                     let old = bus.peek(value as usize);
                     let mut m = old << 1;
-                    if register.get_flag(StatusFlags::CARRY) {
+                    if self.register.get_flag(StatusFlags::CARRY) {
                         m += 1;
                     }
-                    register
+                    self.register
                         .set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
                     bus.write(value as usize, m);
                 }
             }
             Instruction::ROR => {
                 if opcode.mode == Addressing::Accumulator {
-                    let old = register.get_a();
+                    let old = self.register.get_a();
                     let mut a = old >> 1;
-                    if register.get_flag(StatusFlags::CARRY) {
+                    if self.register.get_flag(StatusFlags::CARRY) {
                         a += 128;
                     }
-                    register
+                    self.register
                         .set_flag(StatusFlags::CARRY, old & (1 << 0) != 0)
                         .set_a(a);
                 } else {
                     let old = bus.peek(value as usize);
                     let mut m = old >> 1;
-                    if register.get_flag(StatusFlags::CARRY) {
+                    if self.register.get_flag(StatusFlags::CARRY) {
                         m += 128;
                     }
-                    register
+                    self.register
                         .set_flag(StatusFlags::CARRY, old & (1 << 0) != 0);
                     bus.write(value as usize, m);
                 }
             }
             Instruction::RTI => {
-                let sp = register.pop_stack(bus);
-                register.set_sp(sp as u8);
-                let hi = register.pop_stack(bus) as u16;
-                let low = register.pop_stack(bus) as u16;
-                register.set_pc((hi << 8) | low);
+                let sp = self.register.pop_stack(bus);
+                self.register.set_sp(sp as u8);
+                let hi = self.register.pop_stack(bus) as u16;
+                let low = self.register.pop_stack(bus) as u16;
+                self.register.set_pc((hi << 8) | low);
             }
             Instruction::RTS => {
-                let low = register.pop_stack(bus) as u16;
-                let hi = register.pop_stack(bus) as u16;
-                register.set_pc((hi << 8) | low);
-                register.incr_pc();
+                let low = self.register.pop_stack(bus) as u16;
+                let hi = self.register.pop_stack(bus) as u16;
+                self.register.set_pc((hi << 8) | low);
+                self.register.incr_pc();
             }
             Instruction::SBC => {
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
                     m = bus.peek(value as usize) as u16;
                 }
-                if register.get_flag(StatusFlags::CARRY) {
+                if self.register.get_flag(StatusFlags::CARRY) {
                     m += 1;
                 }
-                let res: (u8, bool) = register.get_a().overflowing_sub(m as u8);
-                register
+                let res: (u8, bool) = self.register.get_a().overflowing_sub(m as u8);
+                self.register
                     .set_flag(StatusFlags::CARRY, res.1)
                     .set_flag(StatusFlags::OVERFLOW, res.1)
                     .set_flag(StatusFlags::NEGATIVE, res.0 & (1 << 7) != 0)
@@ -499,61 +527,61 @@ impl Cpu {
                     .set_a(res.0);
             }
             Instruction::SEC => {
-                register.set_flag(StatusFlags::CARRY, true);
+                self.register.set_flag(StatusFlags::CARRY, true);
             }
             Instruction::SED => {
-                register.set_flag(StatusFlags::DECIMAL, true);
+                self.register.set_flag(StatusFlags::DECIMAL, true);
             }
             Instruction::SEI => {
-                register.set_flag(StatusFlags::INTERRUPT, true);
+                self.register.set_flag(StatusFlags::INTERRUPT, true);
             }
             Instruction::STA => {
-                bus.write(value as usize, register.get_a());
+                bus.write(value as usize, self.register.get_a());
             }
             Instruction::STX => {
-                bus.write(value as usize, register.get_x());
+                bus.write(value as usize, self.register.get_x());
             }
             Instruction::STY => {
-                bus.write(value as usize, register.get_y());
+                bus.write(value as usize, self.register.get_y());
             }
             Instruction::TAX => {
-                let a = register.get_a();
-                register
+                let a = self.register.get_a();
+                self.register
                     .set_flag(StatusFlags::ZERO, a == 0)
                     .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0)
                     .set_x(a);
             }
             Instruction::TAY => {
-                let a = register.get_a();
-                register
+                let a = self.register.get_a();
+                self.register
                     .set_flag(StatusFlags::ZERO, a == 0)
                     .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0)
                     .set_y(a);
             }
             Instruction::TSX => {
-                let st = register.get_sp();
-                register
+                let st = self.register.get_sp();
+                self.register
                     .set_flag(StatusFlags::ZERO, st == 0)
                     .set_flag(StatusFlags::NEGATIVE, st & (1 << 7) != 0)
                     .set_x(st as u8);
             }
             Instruction::TXA => {
-                let x = register.get_x();
-                register
+                let x = self.register.get_x();
+                self.register
                     .set_flag(StatusFlags::ZERO, x == 0)
                     .set_flag(StatusFlags::NEGATIVE, x & (1 << 7) != 0)
                     .set_a(x);
             }
             Instruction::TXS => {
-                let sp = register.get_sp();
-                register
+                let sp = self.register.get_sp();
+                self.register
                     .set_flag(StatusFlags::ZERO, sp == 0)
                     .set_flag(StatusFlags::NEGATIVE, sp & (1 << 7) != 0)
                     .set_x(sp);
             }
             Instruction::TYA => {
-                let y = register.get_y();
-                register
+                let y = self.register.get_y();
+                self.register
                     .set_flag(StatusFlags::ZERO, y == 0)
                     .set_flag(StatusFlags::NEGATIVE, y & (1 << 7) != 0)
                     .set_a(y);
@@ -563,6 +591,20 @@ impl Cpu {
     }
 }
 
+impl fmt::Display for Cpu {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "===========CPU===========")?;
+        writeln!(f, "       NV-BDIZC")?;
+        writeln!(f, "Flags: {:08b}", self.register.get_sr())?;
+        writeln!(f, "Accumulator: ${:x?}", self.register.get_a())?;
+        writeln!(f, "X: ${:x?}", self.register.get_x())?;
+        writeln!(f, "Y: ${:x?}", self.register.get_y())?;
+        writeln!(f, "Stack: ${:x?}", self.register.get_sp())?;
+        writeln!(f, "End PC: ${:x?}", self.register.get_pc())?;
+        writeln!(f, "Opcode counter: {}", self.opcode_counter)?;
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -55,7 +55,7 @@ impl Register {
             r_y: 0x00,
             r_sp: 0xff,
             r_pc: 0x8000,
-            r_sr: 0b00110000,
+            r_sr: 0b0010_0000,
         }
     }
 }
