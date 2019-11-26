@@ -21,13 +21,13 @@ impl Cartbridge {
         }
     }
     pub fn read_file(&mut self, path: String) -> Vec<u8> {
-        println!("Loading : {}", path);
+        println!("ROM: Loading : {}", path);
         match std::fs::read(Path::new(&path)) {
             Result::Ok(rom) => {
                 return rom;
             },
             Result::Err(err) => {
-                eprintln!("Cannot open .nes file: {}", path);
+                eprintln!("ROM: Cannot open .nes file: {}", path);
                 panic!(err);
             }
         }
@@ -48,24 +48,27 @@ impl Cartbridge {
         &mut self.character
     }
     pub fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
-        println!("Loading buffer (size : {}) into Rom memory", data.len());
+        println!("ROM: Loading buffer (size : {}) into Rom memory", data.len());
         let rom_name = str::from_utf8(&data[0..3]).unwrap();
         if rom_name != "NES" {
-            panic!("Invalid ROM name header");
+            panic!("ROM: Invalid ROM name header");
         }
         let next = str::from_utf8(&data[3..4]).unwrap();
         if next != "\x1a" {
-            panic!("Invalid ROM header");
+            panic!("ROM: Invalid ROM header");
         }
         let prg_pages = data[4] as usize; // 2
         let chr_pages = data[5] as usize; // 1
         let _rom_control_one = data[6] & 0x01; // 0
-        let character_rom_start = 0x0010 + prg_pages * 0x4000; // 32784
+        let mut character_rom_start = 0x0010 + prg_pages * 0x4000; // 32784
         let character_rom_end = character_rom_start + chr_pages * 0x2000; //40976
+        if character_rom_start + 0x0010 > data.len() {
+            character_rom_start = data.len() - 0x0010;
+        }
         self.program = data[0x0010..0x0010 + character_rom_start].to_vec();
-        println!("PRG-ROM: {}", self.program.len());
+        println!("ROM: PRG-ROM: {}", self.program.len());
         self.character = data[character_rom_start..character_rom_end].to_vec();
-        println!("CHR-ROM: {}", self.character.len());
+        println!("ROM: CHR-ROM: {}", self.character.len());
         self.size = self.program.len();
         self.mapper = 0;
         if prg_pages == 1 {

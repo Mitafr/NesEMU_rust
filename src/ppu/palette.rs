@@ -49,21 +49,17 @@ impl PaletteVram for Palette {
 
 impl fmt::Display for Palette {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Images")?;
-        for v in self.background.iter() {
-            write!(f, "{:06x?}   ", v)?;
+        if self.background.len() > 0 {
+            writeln!(f, "Images")?;
+            for v in self.background.iter() {
+                write!(f, "#{:06x?}   ", v)?;
+            }
         }
-        writeln!(f, "")?;
-        for (i, _v) in self.background.iter().enumerate() {
-            write!(f, "  {:02x?}     ", i)?;
-        }
-        writeln!(f, "\nSprites")?;
-        for v in self.sprite.iter() {
-            write!(f, "{:06x?}   ", v)?;
-        }
-        writeln!(f, "")?;
-        for (i, _v) in self.sprite.iter().enumerate() {
-            write!(f, "  {:02x?}     ", i)?;
+        if self.sprite.len() > 0 {
+            writeln!(f, "\nSprites")?;
+            for v in self.sprite.iter() {
+                write!(f, "#{:06x?}   ", v)?;
+            }
         }
         Ok(())
     }

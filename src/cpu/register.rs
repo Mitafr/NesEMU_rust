@@ -1,4 +1,4 @@
-use crate::cpu::cpu_bus::Bus;
+use crate::cpu::bus::Bus;
 
 pub enum StatusFlags {
     CARRY,
@@ -6,6 +6,7 @@ pub enum StatusFlags {
     INTERRUPT,
     DECIMAL,
     BREAK,
+    UNUSED,
     OVERFLOW,
     NEGATIVE,
 }
@@ -111,6 +112,7 @@ impl CpuRegister for Register {
                 StatusFlags::INTERRUPT => self.r_sr |= 1 << 2,
                 StatusFlags::DECIMAL => self.r_sr |= 1 << 3,
                 StatusFlags::BREAK => self.r_sr |= 1 << 4,
+                StatusFlags::UNUSED => self.r_sr |= 1 << 5,
                 StatusFlags::OVERFLOW => self.r_sr |= 1 << 6,
                 StatusFlags::NEGATIVE => self.r_sr |= 1 << 7,
             }
@@ -121,6 +123,7 @@ impl CpuRegister for Register {
                 StatusFlags::INTERRUPT => self.r_sr &= 0b11111011,
                 StatusFlags::DECIMAL => self.r_sr &= 0b11110111,
                 StatusFlags::BREAK => self.r_sr &= 0b11101111,
+                StatusFlags::UNUSED => self.r_sr &= 0b11011111,
                 StatusFlags::OVERFLOW => self.r_sr &= 0b10111111,
                 StatusFlags::NEGATIVE => self.r_sr &= 0b01111111,
             }
@@ -131,9 +134,10 @@ impl CpuRegister for Register {
         match flag {
             StatusFlags::CARRY => self.r_sr & 0b00000001 == 0b00000001,
             StatusFlags::ZERO => self.r_sr & 0b00000010 == 0b00000010,
-            StatusFlags::INTERRUPT => self.r_sr & 0b00000101 == 0b00000100,
+            StatusFlags::INTERRUPT => self.r_sr & 0b00000100 == 0b00000100,
             StatusFlags::DECIMAL => self.r_sr & 0b00001000 == 0b00001000,
             StatusFlags::BREAK => self.r_sr & 0b00010000 == 0b00010000,
+            StatusFlags::UNUSED => self.r_sr & 0b00100000 == 0b00100000,
             StatusFlags::OVERFLOW => self.r_sr & 0b01000000 == 0b01000000,
             StatusFlags::NEGATIVE => self.r_sr & 0b10000000 == 0b10000000,
         }

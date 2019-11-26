@@ -36,9 +36,6 @@ impl Memory for Ram {
         self.mem[i - self.offset]
     }
     fn write(&mut self, i: usize, value: u8) -> u8 {
-        if i != 0xfe {
-            println!("Writing in RAM => {:x?} at index {:x}", value, i);
-        }
         self.mem[i - self.offset] = value;
         value
     }

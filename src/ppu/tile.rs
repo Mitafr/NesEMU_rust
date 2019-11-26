@@ -19,18 +19,15 @@ impl Tile {
             let tilelow = slice[j];
             let tilehi = slice[j + 8];
             for k in 0..8 {
-                let vv = (((0x80 >> k) & tilelow) / (0x80 >> k)) << 1;
-                let vvv = ((0x80 >> k) & tilehi) / (0x80 >> k);
-                self.pixels[j as usize][k as usize] = vv + vvv;
+                let low = (((0x80 >> k) & tilelow) / (0x80 >> k)) << 1;
+                let hi = ((0x80 >> k) & tilehi) / (0x80 >> k);
+                self.pixels[j as usize][k as usize] = low + hi;
             }
             self.index = index;
         }
     }
     pub fn get_pixels(&self) -> &Vec<Vec<u8>> {
         &self.pixels
-    }
-    pub fn set_index(&mut self, v: usize) {
-        self.index = v;
     }
 }
 

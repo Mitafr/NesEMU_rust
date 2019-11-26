@@ -1,11 +1,12 @@
-pub mod cpu_register;
+pub mod register;
 pub mod opcode;
-pub mod cpu_mem;
-pub mod cpu_bus;
+pub mod memory;
+pub mod bus;
 
-use crate::cpu::cpu_bus::Bus;
-use crate::cpu::cpu_register::*;
+use crate::cpu::bus::Bus;
+use crate::cpu::register::*;
 use crate::cpu::opcode::*;
+use crate::Cycle;
 extern crate rand;
 
 use rand::Rng;
@@ -16,43 +17,48 @@ pub enum EmulationStatus {
     PROCESSING,
     ERROR,
     BREAK,
+    RESET,
 }
 
 pub struct Cpu {
     pub opcode_counter: u32,
     register: Register,
+    extra_cycle: Cycle,
 }
 
 impl Cpu {
     pub fn new() -> Cpu {
         let mut register = Register::new();
-        register.set_sp(0xFF);
         register.set_flag(StatusFlags::INTERRUPT, true);
         Cpu {
             opcode_counter: 0,
-            register: Register::new(),
+            register: register,
+            extra_cycle: 0,
         }
     }
-    pub fn reset<B: Bus>(&mut self, bus: &mut B) {
+    pub fn reset<B: Bus>(&mut self, bus: &mut B) -> Cycle {
         let hi = bus.peek(0xFFFC) as u16;
         let low = bus.peek(0xFFFC + 1) as u16;
+        self.register.push_stack(hi as u8, bus);
+        self.register.push_stack(low as u8, bus);
         let pc = ((low << 8) | hi) as u16;
         self.register.set_pc(pc);
-        self.register.set_pc(pc);
+        7
     }
     fn set_random_number<B: Bus>(&mut self, bus: &mut B) {
         let mut rng = rand::thread_rng();
         let value: u8 = rng.gen_range(0, 255);
         bus.write(0x00FE, value);
     }
-    pub fn run<B: Bus>(&mut self, bus: &mut B) -> (u16, EmulationStatus) {
+    pub fn run<B: Bus>(&mut self, bus: &mut B) -> (Cycle, EmulationStatus) {
+        self.extra_cycle = 0;
         self.set_random_number(bus);
         let pc = self.register.get_pc();
         let value = bus.peek(pc as usize);
         self.register.incr_pc();
         let opcode = opcode::OPCODES.get(&value).unwrap();
         let value = self.fetch_operand(bus, opcode);
-        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", self.register.get_pc(), opcode, value);
+        println!("OPCODE at {:x?}: {:x?}, value: {:x?}", pc, opcode, value);
         println!("A: {:x?},X: {:x?},Y: {:x?},P: {:x?},SP: {:x?},PC: {:x?},",
             self.register.get_a(),
             self.register.get_x(),
@@ -61,8 +67,20 @@ impl Cpu {
             self.register.get_sp(),
             pc
         );
+        println!("N : {}, V: {}, R: {}, B: {}, D: {}, I: {}, Z: {}, C: {}",
+            self.register.get_flag(StatusFlags::NEGATIVE),
+            self.register.get_flag(StatusFlags::OVERFLOW),
+            self.register.get_flag(StatusFlags::UNUSED),
+            self.register.get_flag(StatusFlags::BREAK),
+            self.register.get_flag(StatusFlags::DECIMAL),
+            self.register.get_flag(StatusFlags::INTERRUPT),
+            self.register.get_flag(StatusFlags::ZERO),
+            self.register.get_flag(StatusFlags::CARRY),
+        );
         self.opcode_counter += 1;
-        (opcode.cycle as u16, self.execute_op(value, bus, opcode))
+        let res = self.execute_op(value, bus, opcode);
+        println!("Extra Cycle: {:x?}", self.extra_cycle);
+        (opcode.cycle as Cycle + self.extra_cycle, res)
     }
     #[allow(dead_code)]
     fn run_instructions<B: Bus>(&mut self, n: usize, bus: &mut B) {
@@ -81,6 +99,16 @@ impl Cpu {
                 self.register.get_sp(),
                 self.register.get_pc()
             );
+            /*println!("N : {}, V: {}, R: {}, B: {}, D: {}, I: {}, Z: {}, C: {}",
+                self.register.get_flag(StatusFlags::NEGATIVE),
+                self.register.get_flag(StatusFlags::OVERFLOW),
+                self.register.get_flag(StatusFlags::UNUSED),
+                self.register.get_flag(StatusFlags::BREAK),
+                self.register.get_flag(StatusFlags::DECIMAL),
+                self.register.get_flag(StatusFlags::INTERRUPT),
+                self.register.get_flag(StatusFlags::ZERO),
+                self.register.get_flag(StatusFlags::CARRY),
+            );*/
             self.execute_op(value, bus, opcode);
         }
     }
@@ -143,9 +171,7 @@ impl Cpu {
             Addressing::ZeroPageX => self.fetch_zeropage_x(bus),
             Addressing::ZeroPageY => self.fetch_zeropage_y(bus),
             Addressing::Absolute => self.fetch_word(bus),
-            Addressing::AbsoluteX => {
-                self.fetch_absolute_x(bus)
-            }
+            Addressing::AbsoluteX => self.fetch_absolute_x(bus),
             Addressing::AbsoluteY => self.fetch_absolute_y(bus),
             Addressing::Relative => self.fetch_relative_address(bus),
             Addressing::IndirectAbsolute => self.fetch_indirect_absolute(bus),
@@ -166,7 +192,6 @@ impl Cpu {
         value
     }
 
-
     fn execute_op<B: Bus>(&mut self, value: u16, bus: &mut B, opcode: &Opcode) -> EmulationStatus {
         match opcode.name {
             Instruction::ADC => {
@@ -176,12 +201,13 @@ impl Cpu {
                 } else {
                     res = self.register.get_a().overflowing_add(bus.peek(value as usize));
                 }
+                self.register.set_a(res.0)
+                    .set_flag(StatusFlags::CARRY, res.1);
                 if self.register.get_flag(StatusFlags::CARRY) {
-                    res.0.wrapping_add(1);
+                    res = self.register.get_a().overflowing_add(1);
                 }
                 self.register
                     .set_a(res.0)
-                    .set_flag(StatusFlags::CARRY, res.1)
                     .set_flag(StatusFlags::OVERFLOW, res.1)
                     .set_flag(StatusFlags::NEGATIVE, res.0 & (1 << 7) != 0)
                     .set_flag(StatusFlags::ZERO, res.0 == 0);
@@ -215,16 +241,19 @@ impl Cpu {
             }
             Instruction::BCC => {
                 if !self.register.get_flag(StatusFlags::CARRY) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
             Instruction::BCS => {
                 if self.register.get_flag(StatusFlags::CARRY) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
             Instruction::BEQ => {
                 if self.register.get_flag(StatusFlags::ZERO) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
@@ -237,16 +266,19 @@ impl Cpu {
             }
             Instruction::BMI => {
                 if self.register.get_flag(StatusFlags::NEGATIVE) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
             Instruction::BNE => {
                 if !self.register.get_flag(StatusFlags::ZERO) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
             Instruction::BPL => {
                 if !self.register.get_flag(StatusFlags::NEGATIVE) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
@@ -258,11 +290,13 @@ impl Cpu {
             }
             Instruction::BVC => {
                 if !self.register.get_flag(StatusFlags::OVERFLOW) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
             Instruction::BVS => {
                 if self.register.get_flag(StatusFlags::OVERFLOW) {
+                    self.extra_cycle = if self.register.get_pc() & 0xFF00 != value & 0xFF00 { 2 } else { 1 };
                     self.register.set_pc(value);
                 }
             }
@@ -319,18 +353,18 @@ impl Cpu {
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
             }
             Instruction::DEX => {
-                let res = self.register.get_x();
+                let res = self.register.get_x().wrapping_sub(1);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
-                    .set_x(res.wrapping_sub(1));
+                    .set_x(res);
             }
             Instruction::DEY => {
-                let res = self.register.get_y();
+                let res = self.register.get_y().wrapping_sub(1);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
-                    .set_y(res.wrapping_sub(1));
+                    .set_y(res);
             }
             Instruction::EOR => {
                 let a = self.register.get_a();
@@ -352,18 +386,18 @@ impl Cpu {
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
             }
             Instruction::INX => {
-                let res = self.register.get_x();
+                let res = self.register.get_x().wrapping_add(1);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
-                    .set_x(res.wrapping_add(1));
+                    .set_x(res);
             }
             Instruction::INY => {
-                let res = self.register.get_y();
+                let res = self.register.get_y().wrapping_add(1);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
-                    .set_y(res.wrapping_add(1));
+                    .set_y(res);
             }
             Instruction::JMP => {
                 self.register.set_pc(value);
@@ -420,9 +454,7 @@ impl Cpu {
                 }
                 self.register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
             }
-            Instruction::NOP => {
-                return EmulationStatus::PROCESSING;
-            }
+            Instruction::NOP => return EmulationStatus::PROCESSING,
             Instruction::ORA => {
                 let a = self.register.get_a();
                 let mut m = value;
@@ -573,6 +605,8 @@ impl Cpu {
                     .set_a(x);
             }
             Instruction::TXS => {
+                let x = self.register.get_x();
+                self.register.set_sp(x);
                 let sp = self.register.get_sp();
                 self.register
                     .set_flag(StatusFlags::ZERO, sp == 0)
@@ -587,7 +621,7 @@ impl Cpu {
                     .set_a(y);
             }
         }
-        return EmulationStatus::PROCESSING;
+        EmulationStatus::PROCESSING
     }
 }
 

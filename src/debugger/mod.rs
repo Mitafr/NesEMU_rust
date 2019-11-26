@@ -30,6 +30,7 @@ impl PpuDebugger {
         let window = video_subsys.window("Debugger", SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE)
             .position_centered()
             .set_window_flags(8u32)
+            .resizable()
             .build()
             .map_err(|e| e.to_string())
             .unwrap();
@@ -42,7 +43,7 @@ impl PpuDebugger {
         let texture_creator = canvas.texture_creator();
         PpuDebugger {
             renderer: canvas,
-            display: [222u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
+            display: [0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],
             texture: texture_creator.create_texture(PixelFormatEnum::RGB24, TextureAccess::Streaming, SCREEN_WIDTH, SCREEN_HEIGHT).unwrap(),
             is_open: false,
         }
@@ -51,9 +52,6 @@ impl PpuDebugger {
         for (tile_index, tile) in tileset.iter().enumerate() {
             for (y, tt) in tile.iter().enumerate() {
                 for (x, tile_v) in tt.iter().enumerate() {
-                    if *tile_v == 0 {
-                        continue;
-                    }
                     let col = palette.peek_color_background(*tile_v);
                     let xcoord = (((tile_index % 32) * 8 + x)) as u32;
                     let ycoord = (((tile_index / 32) * 8 + y)) as u32;

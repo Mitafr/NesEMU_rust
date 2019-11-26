@@ -23,6 +23,7 @@ impl Renderer {
         let video_subsys = sdl_context.video().unwrap();
         let window = video_subsys.window(name, SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE)
             .position_centered()
+            .resizable()
             .build()
             .map_err(|e| e.to_string())
             .unwrap();
@@ -53,8 +54,8 @@ impl Renderer {
         self.display[(coords + 2) as usize] = b;
     }
     pub fn set_tile(&mut self, tile: &mut Tile, palette: &mut Palette) {
-        let yoffset = ((tile.index as u32 / 34) * 8) as u32;
-        let xoffset = ((tile.index as u32 % 32) * 8) as u32;
+        let yoffset = ((tile.index as u32 / ((SCREEN_HEIGHT + 36) / 8)) * 8) as u32;
+        let xoffset = ((tile.index as u32 % (SCREEN_WIDTH / 8)) * 8) as u32;
         for (i, x) in tile.get_pixels().iter().enumerate() {
             for (j, y) in x.iter().enumerate() {
                 let color = get_rgb(palette.peek_color_background(*y));
@@ -71,6 +72,11 @@ impl Renderer {
                 self.set_pixel(xcoord as u32 + j as u32, ycoord as u32 + i as u32, color.0, color.1, color.2);
             }
         }
+    }
+    pub fn reset(&mut self) {
+        self.display = [0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize];
+        self.texture.update(None, &self.display, (SCREEN_WIDTH * 3) as usize).unwrap();
+        self.renderer.clear();
     }
 }
 

@@ -16,6 +16,7 @@ pub struct PpuRegister {
     r_data: u8,
     r_oam_dma: u8,
     r_writing_lower_addr: bool,
+    //buffer: u8, set to remember old register value into mem pointer
 }
 
 pub trait Register {
@@ -79,6 +80,7 @@ impl PpuRegister {
             r_data: 0x00,
             r_oam_dma: 0x00,
             r_writing_lower_addr: false,
+            // buffer: 0x00,
         }
     }
 }
@@ -165,10 +167,11 @@ impl Register for PpuRegister {
         self.r_status
     }
     fn get_oam_addr(&self) -> u8 {
+        panic!("Not implemented");
         self.r_oam_addr
     }
     fn read_oam(&self) -> u8 {
-        self.r_oam_data
+        panic!("Not implemented");
     }
     fn get_scroll(&self) -> u8 {
         self.r_scroll
@@ -181,6 +184,7 @@ impl Register for PpuRegister {
         self.r_data
     }
     fn get_oam_dma(&self) -> u8 {
+        panic!("Not implemented");
         self.r_oam_dma
     }
 
@@ -198,10 +202,12 @@ impl Register for PpuRegister {
         self
     }
     fn set_oam_addr(&mut self, v: u8) -> &mut Self {
+        panic!("Not implemented");
         self.r_oam_addr = v;
         self
     }
     fn write_oam_data(&mut self, v: u8, spr_mem: &mut SpriteMem) -> &mut Self {
+        panic!("Not implemented");
         self.r_oam_data = v;
         spr_mem.write_data(self.get_oam_addr() as usize, v);
         self.r_oam_addr += 1;
@@ -224,12 +230,13 @@ impl Register for PpuRegister {
     }
     fn write_data<P: PaletteVram>(&mut self, v: u8, mem: &mut PpuMem, palette: &mut P) -> &mut Self {
         self.r_data = v;
-        mem.write_data(self.r_addr as usize, v, palette);
         self.incr_addr();
+        mem.write_data(self.r_addr as usize, v, palette);
         self
     }
     fn set_oam_dma(&mut self, v: u8) -> &mut Self {
         self.r_oam_dma = v;
+        panic!("Not implemented");
         self
     }
     fn peek(&mut self, i: usize) -> u8 {
@@ -238,7 +245,7 @@ impl Register for PpuRegister {
             0x2004 => self.read_oam(),
             0x2007 => self.read_data(),
             _ => {
-                panic!("Invalid read PPU at {:x?}", i);
+                panic!("Invalid read PPU register at {:x?}", i);
             }
         }
     }
@@ -252,7 +259,7 @@ impl Register for PpuRegister {
             0x2006 => self.set_addr(v as u16),
             0x2007 => self.write_data(v, mem, palette),
             _ => {
-                panic!("Invalid write in PPU at {:x?} : {:x?}", i, v);
+                panic!("Invalid write in PPU register at {:x?} : {:x?}", i, v);
             }
         };
         v

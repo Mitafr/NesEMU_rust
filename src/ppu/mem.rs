@@ -3,24 +3,19 @@ use crate::ppu::palette::PaletteVram;
 use std::fmt;
 
 pub struct PpuMem {
-    vram: [u8; 0x2000],
-    cram: Vec<u8>,
+    vram: [u8; 0x4000],
+    // cram: Vec<u8>,
 }
 
 impl PpuMem {
     pub fn new() -> PpuMem {
         PpuMem {
-            vram: [0; 0x2000],
-            cram: vec![0; 0x2000],
+            vram: [0; 0x4000],
         }
     }
 
     pub fn peek(&mut self, i: usize) -> u8 {
-        match i {
-            0x0000...0x1FFF => self.cram[i],
-            0x2000...0x3FFF => self.vram[i - 0x2000],
-            _ => 0
-        }
+        self.vram[i]
     }
     pub fn write_data<P: PaletteVram>(&mut self, i: usize, value: u8, palette: &mut P) -> u8 {
         match i {
@@ -32,13 +27,15 @@ impl PpuMem {
             }
             _ => {
                 println!("Writing in VRAM at {:x?} -> {:x?} ({:08b})", i, value, value);
-                self.vram[i.wrapping_sub(0x2000)] = value;
+                self.vram[i] = value;
             }
         };
         value
     }
     pub fn set_cram(&mut self, value: Vec<u8>) {
-        self.cram = value;
+        for (i, v) in value.iter().enumerate() {
+            self.vram[i] = *v;
+        }
     }
 }
 
