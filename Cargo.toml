@@ -1,0 +1,10 @@
+[package]
+name = "NesEMU-rust"
+version = "0.1.0"
+authors = ["Mita <martin.pelletier78@hotmail.com>"]
+edition = "2018"
+
+[dependencies]
+rand = "0.6.5"
+lazy_static = "1.3.0"
+minifb = "0.11.2"
