@@ -19,10 +19,10 @@ impl PpuMem {
     }
     pub fn write_data<P: PaletteVram>(&mut self, i: usize, value: u8, palette: &mut P) -> u8 {
         match i {
-            0x3F00...0x3F0F => {
+            0x3F00..=0x3F0F => {
                 palette.write_background(value)
             }
-            0x3F10...0x3F1F => {
+            0x3F10..=0x3F1F => {
                 palette.write_sprite(value)
             }
             _ => {

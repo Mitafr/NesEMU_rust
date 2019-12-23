@@ -32,12 +32,12 @@ impl<'a> CpuBus<'a> {
 impl<'a> Bus for CpuBus<'a> {
     fn peek(&mut self, i: usize) -> u8 {
         match i & 0xFFFF {
-            0...0x1FFF => self.ram.peek(i),
-            0x2000...0x3FFF => self.ppu.peek(i),
+            0..=0x1FFF => self.ram.peek(i),
+            0x2000..=0x3FFF => self.ppu.peek(i),
             0x4016 => self.controller.read(),
-            0x8000...0xBFFF if self.rom.get_size() <= 0x4010 => self.rom.peek(i + 0x4000),
-            0x8000...0xBFFF => self.rom.peek(i),
-            0xC000...0xFFFF => self.rom.peek(i),
+            0x8000..=0xBFFF if self.rom.get_size() <= 0x4010 => self.rom.peek(i + 0x4000),
+            0x8000..=0xBFFF => self.rom.peek(i),
+            0xC000..=0xFFFF => self.rom.peek(i),
             _ => {
                 println!("Wrong index => {:x?}", i);
                 0
@@ -46,10 +46,10 @@ impl<'a> Bus for CpuBus<'a> {
     }
     fn write(&mut self, i: usize, v: u8) -> u8 {
         match i {
-            0...0x1FFF => self.ram.write(i, v),
-            0x2000...0x3FFF => self.ppu.write(i, v),
+            0..=0x1FFF => self.ram.write(i, v),
+            0x2000..=0x3FFF => self.ppu.write(i, v),
             0x4016 => self.controller.write(i, v),
-            0x8000...0xFFFF => self.rom.write(i, v),
+            0x8000..=0xFFFF => self.rom.write(i, v),
             _ => {
                 println!("Wrong index => {:x?}", i);
                 v
