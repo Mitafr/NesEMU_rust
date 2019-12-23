@@ -1,5 +1,4 @@
 
-use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
@@ -49,9 +48,9 @@ impl Controller {
         v
     }
     pub fn read(&self) -> u8 {
-        panic!("Not implemented yet");
-        /*let value = (self.register.bit << self.addr);
-        self.register.key*/
+        //panic!("Not implemented yet");
+        let value = (self.register.bit << self.addr);
+        self.register.key
     }
     pub fn poll_events(&mut self, event: &Event) {
         match event {

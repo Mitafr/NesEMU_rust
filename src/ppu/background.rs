@@ -29,7 +29,7 @@ impl Background {
             empty_pattern: true,
         }
     }
-    pub fn fetch_attribute(&mut self, addr: usize, vram: &mut PpuMem, register: &mut PpuRegister) {
+    pub fn fetch_attribute(&mut self, addr: usize, vram: &mut PpuMem) {
         let addr = 0x23C0 | (addr & 0x0C00) | ((addr >> 4) & 0x38) | ((addr >> 2) & 0x07);
         let value = vram.peek(addr);
         self.tile_attr = value;
@@ -45,7 +45,7 @@ impl Background {
             self.current_pattern[(i - self.tile_addr) as usize] = vram.peek(i as usize);
         }
     }
-    pub fn fetch_highorder_byte(&mut self, vram: &mut PpuMem, register: &mut PpuRegister) {
+    pub fn fetch_highorder_byte(&mut self, vram: &mut PpuMem) {
         self.tile_addr += 8;
         for i in self.tile_addr..self.tile_addr + 8 {
             if vram.peek(i as usize) != 0 {

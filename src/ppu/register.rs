@@ -167,11 +167,10 @@ impl Register for PpuRegister {
         self.r_status
     }
     fn get_oam_addr(&self) -> u8 {
-        panic!("Not implemented");
         self.r_oam_addr
     }
     fn read_oam(&self) -> u8 {
-        panic!("Not implemented");
+        self.r_oam_data
     }
     fn get_scroll(&self) -> u8 {
         self.r_scroll
@@ -184,7 +183,6 @@ impl Register for PpuRegister {
         self.r_data
     }
     fn get_oam_dma(&self) -> u8 {
-        panic!("Not implemented");
         self.r_oam_dma
     }
 
@@ -202,12 +200,10 @@ impl Register for PpuRegister {
         self
     }
     fn set_oam_addr(&mut self, v: u8) -> &mut Self {
-        panic!("Not implemented");
         self.r_oam_addr = v;
         self
     }
     fn write_oam_data(&mut self, v: u8, spr_mem: &mut SpriteMem) -> &mut Self {
-        panic!("Not implemented");
         self.r_oam_data = v;
         spr_mem.write_data(self.get_oam_addr() as usize, v);
         self.r_oam_addr += 1;
@@ -237,7 +233,6 @@ impl Register for PpuRegister {
     fn set_oam_dma(&mut self, v: u8) -> &mut Self {
         self.r_oam_dma = v;
         panic!("Not implemented");
-        self
     }
     fn peek(&mut self, i: usize) -> u8 {
         match i {

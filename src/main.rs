@@ -14,15 +14,17 @@ mod ppu;
 mod renderer;
 mod rom;
 
-use std::env;
 use std::fmt;
 use std::option::Option;
 
 use cpu::Cpu;
 use rom::Cartbridge;
 use cpu::memory::Ram;
+#[allow(unused_imports)]
 use cpu::register::CpuRegister;
+#[allow(unused_imports)]
 use cpu::register::Register;
+#[allow(unused_imports)]
 use cpu::bus::CpuBus;
 #[allow(unused_imports)]
 use cpu::bus::Bus;
@@ -54,7 +56,7 @@ impl Context {
         let cpu_ram = Ram::new();
         let ppu = ppu::Ppu::new();
         let mut cartbridge = Cartbridge::new();
-        let mut buffer = cartbridge.read_file(String::from("roms/Balloon_fight.nes"));
+        let mut buffer = cartbridge.read_file(String::from("roms/nestest.nes"));
         cartbridge.load_program(&mut buffer);
         let sdl_context = sdl2::init().unwrap();
         let events: EventPump = sdl_context.event_pump().unwrap();
@@ -75,25 +77,19 @@ impl Context {
         }
     }
     pub fn run(&mut self) -> EmulationStatus{
-        println!("===========================\nTIMING: CPU: {:?}, PPU LINE: {:?}, PPU DOT: {:?}", self.cpu_cycle, self.ppu.line, self.ppu.dot);
-        println!("VRAM Address : {:x?}", self.ppu.register.get_addr());
+        println!("===========================\nTIMING: CPU: {:?}, PPU LINE: {:?}, PPU DOT: {:?}, VRAM Address : {:x?}", self.cpu_cycle, self.ppu.line, self.ppu.dot, self.ppu.register.get_addr());
         let mut cpu_bus = CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu, &mut self.controller);
         let cpu_cb: (Cycle, EmulationStatus) = self.cpu.run(&mut cpu_bus);
         let mut status = cpu_cb.1;
         for _ in 0..cpu_cb.0 * 3 {
             match self.ppu.run() {
-                PpuStatus::ERROR | PpuStatus::BREAK => {
-                    status = EmulationStatus::BREAK;
-                }
-                PpuStatus::RENDERERNOTINITIALIZED => {
-                    panic!("PPU: Renderer not properly initialized");
-                }
                 PpuStatus::RENDERING => {
                     self.ppu.background.draw(&mut self.renderer, &mut self.ppu.palette);
                     self.ppu.sprites.draw(&mut self.renderer, &mut self.ppu.palette);
                     self.renderer.draw_window();
                     println!("PPU: Rendering in progress");
                 }
+                PpuStatus::INTERRUPTNMI => self.cpu.triggerNMI(),
                 PpuStatus::PROCESSING => {}
             }
         }
@@ -164,7 +160,7 @@ impl Context {
 }
 
 fn main() -> Result<(), String> {
-    let args: Vec<String> = env::args().collect();
+    // let args: Vec<String> = env::args().collect();
     let mut ctx = Context::new();
     ctx.init();
     'main: loop {

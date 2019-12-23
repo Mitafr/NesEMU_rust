@@ -20,10 +20,18 @@ pub enum EmulationStatus {
     RESET,
 }
 
+#[derive(PartialEq)]
+pub enum CPUInterrupts {
+    INTERRUPTNMI,
+    INTERRUPTIRQ,
+    INTERRUPTNONE,
+}
+
 pub struct Cpu {
     pub opcode_counter: u32,
     register: Register,
     extra_cycle: Cycle,
+    interrupt: CPUInterrupts,
 }
 
 impl Cpu {
@@ -34,7 +42,11 @@ impl Cpu {
             opcode_counter: 0,
             register: register,
             extra_cycle: 0,
+            interrupt: CPUInterrupts::INTERRUPTNONE,
         }
+    }
+    pub fn triggerNMI(&mut self) {
+        self.interrupt = CPUInterrupts::INTERRUPTNMI;
     }
     pub fn reset<B: Bus>(&mut self, bus: &mut B) -> Cycle {
         let hi = bus.peek(0xFFFC) as u16;
@@ -43,6 +55,7 @@ impl Cpu {
         self.register.push_stack(low as u8, bus);
         let pc = ((low << 8) | hi) as u16;
         self.register.set_pc(pc);
+        println!("CPU: first PC : {:x?}", self.register.get_pc());
         7
     }
     fn set_random_number<B: Bus>(&mut self, bus: &mut B) {
@@ -79,7 +92,25 @@ impl Cpu {
         );
         self.opcode_counter += 1;
         let res = self.execute_op(value, bus, opcode);
-        println!("Extra Cycle: {:x?}", self.extra_cycle);
+        match self.interrupt {
+            CPUInterrupts::INTERRUPTIRQ => {}
+            CPUInterrupts::INTERRUPTNMI => {
+                self.register.set_flag(StatusFlags::BREAK, false);
+                let pcH = (self.register.get_pc() >> 8) as u8;
+                let pcL = (self.register.get_pc() & 0xFF) as u8;
+                self.register.push_stack(pcH, bus);
+                self.register.push_stack(pcL, bus);
+                self.register.push_stack(self.register.get_sr() as u8, bus);
+                self.register.set_flag(StatusFlags::INTERRUPT, true);
+
+                let hi = bus.peek(0xFFFB) as u16;
+                let low = bus.peek(0xFFFA) as u16;
+                self.register.set_pc((hi << 8) | low);
+                self.extra_cycle = 7;
+            }
+            CPUInterrupts::INTERRUPTNONE => {}
+        }
+        self.interrupt = CPUInterrupts::INTERRUPTNONE;
         (opcode.cycle as Cycle + self.extra_cycle, res)
     }
     #[allow(dead_code)]
@@ -99,16 +130,6 @@ impl Cpu {
                 self.register.get_sp(),
                 self.register.get_pc()
             );
-            /*println!("N : {}, V: {}, R: {}, B: {}, D: {}, I: {}, Z: {}, C: {}",
-                self.register.get_flag(StatusFlags::NEGATIVE),
-                self.register.get_flag(StatusFlags::OVERFLOW),
-                self.register.get_flag(StatusFlags::UNUSED),
-                self.register.get_flag(StatusFlags::BREAK),
-                self.register.get_flag(StatusFlags::DECIMAL),
-                self.register.get_flag(StatusFlags::INTERRUPT),
-                self.register.get_flag(StatusFlags::ZERO),
-                self.register.get_flag(StatusFlags::CARRY),
-            );*/
             self.execute_op(value, bus, opcode);
         }
     }
@@ -191,7 +212,6 @@ impl Cpu {
         self.register.incr_pc();
         value
     }
-
     fn execute_op<B: Bus>(&mut self, value: u16, bus: &mut B, opcode: &Opcode) -> EmulationStatus {
         match opcode.name {
             Instruction::ADC => {
@@ -530,16 +550,17 @@ impl Cpu {
                 }
             }
             Instruction::RTI => {
-                let sp = self.register.pop_stack(bus);
-                self.register.set_sp(sp as u8);
-                let hi = self.register.pop_stack(bus) as u16;
+                let sr = self.register.pop_stack(bus);
                 let low = self.register.pop_stack(bus) as u16;
-                self.register.set_pc((hi << 8) | low);
+                let hi = self.register.pop_stack(bus) as u16;
+                self.register.set_sr(sr as u8);
+                self.register.set_pc(low | (hi << 8));
+                //self.register.set_pc(low<<8 | hi);
             }
             Instruction::RTS => {
                 let low = self.register.pop_stack(bus) as u16;
                 let hi = self.register.pop_stack(bus) as u16;
-                self.register.set_pc((hi << 8) | low);
+                self.register.set_pc(low | (hi << 8));
                 self.register.incr_pc();
             }
             Instruction::SBC => {
@@ -645,150 +666,156 @@ mod tests {
     use super::*;
     use crate::rom::Cartbridge;
     use crate::ppu::Ppu;
+    use crate::CpuBus;
+    use crate::controller::Controller;
+    use crate::cpu::memory::Ram;
+    #[allow(unused_imports)]
+    use crate::cpu::register::Register;
     use crate::memory::Memory;
+
 
     struct TestContext {
         cpu: Cpu,
-        ram: cpu_mem::Ram,
-        register: Register,
+        ram: Ram,
         ppu: Ppu,
-        rom: Cartbridge
+        rom: Cartbridge,
+        controller: Controller
     }
 
     fn create_test_context(program: &Vec<u8>) -> TestContext {
         let mut cartbridge = Cartbridge::new();
         let cpu = Cpu::new();
-        let cpu_ram = cpu_mem::Ram::new();
-        let cpu_register = cpu_register::Register::new();
+        let cpu_ram = Ram::new();
         let ppu = Ppu::new();
+        let controller = Controller::new();
         cartbridge.load_from_vec(program);
         TestContext {
             cpu: cpu,
             ram: cpu_ram,
-            register: cpu_register,
             ppu: ppu,
-            rom: cartbridge
+            rom: cartbridge,
+            controller
         }
     }
     #[test]
     fn test_adc_immediate() {
         let program:Vec<u8> = vec!(0x69, 0xa1); // ADC #$a1
         let mut ctx = create_test_context(&program);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0xa1);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xa1);
     }
     #[test]
     fn test_adc_zeropage() {
         let program:Vec<u8> = vec!(0x65, 0xa1); // ADC $a1
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a1, 0x08);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x08);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x08);
     }
     #[test]
     fn test_adc_zeropagex() {
         let program:Vec<u8> = vec!(0x75, 0xa1); // ADC $a1,X
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a2, 0x08);
-        ctx.register.set_x(0x01);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x08);
+        ctx.cpu.register.set_x(0x01);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x08);
     }
     #[test]
     fn test_adc_absolute() {
         let program:Vec<u8> = vec!(0x6D, 0xa1, 0x00); // ADC $00a1
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a1, 0x08);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x08);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x08);
     }
     #[test]
     fn test_adc_absolutex() {
         let program:Vec<u8> = vec!(0x7D, 0xa1, 0x00); // ADC $00a1
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a2, 0x08);
-        ctx.register.set_x(0x01);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x08);
+        ctx.cpu.register.set_x(0x01);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x08);
     }
     #[test]
     fn test_asl_accumulator() {
         let program:Vec<u8> = vec!(0x0A); // ASL A
         let mut ctx = create_test_context(&program);
-        ctx.register.set_a(0x02);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x04);
+        ctx.cpu.register.set_a(0x02);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x04);
     }
     #[test]
     fn test_asl() {
         let program:Vec<u8> = vec!(0x06, 0x04); // ASL $04
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x0004, 0x02);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0x0004), 0x04);
     }
     #[test]
     fn test_lda_immediate() {
         let program:Vec<u8> = vec!(0xa9, 0xff); // LDA #$ff
         let mut ctx = create_test_context(&program);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0xFF);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xFF);
     }
     #[test]
     fn test_lda_zeroepage() {
         let program:Vec<u8> = vec!(0xa5, 0xa0); // LDA $a0
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a0, 0x08);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x08);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x08);
     }
     #[test]
     fn test_lda_zeroepagex() {
         let program:Vec<u8> = vec!(0xb5, 0xa0); // LDA $a0,X
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a5, 0x08);
-        ctx.register.set_x(0x05);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x08);
+        ctx.cpu.register.set_x(0x05);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x08);
     }
     #[test]
     fn test_lda_absolute() {
         let program:Vec<u8> = vec!(0xad, 0x00, 0x1F);  // LDA $f000
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x1f00, 0x0F);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x0F);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x0F);
     }
     #[test]
     fn test_lda_absolutex() {
         let program:Vec<u8> = vec!(0xbd, 0xa5, 0x00);  // LDA $00a5,X
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00aa, 0x0F);
-        ctx.register.set_x(0x05);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x0F);
+        ctx.cpu.register.set_x(0x05);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x0F);
     }
     #[test]
     fn test_lda_absolutey() {
         let program:Vec<u8> = vec!(0xb9, 0xa5, 0x00);  // LDA $00a5,Y
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00aa, 0x0F);
-        ctx.register.set_y(0x05);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0x0F);
+        ctx.cpu.register.set_y(0x05);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x0F);
     }
     #[test]
     fn test_lda_indirectx() {
@@ -796,10 +823,10 @@ mod tests {
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a1, 0xA3);
         ctx.ram.write(0x00a3, 0xA0);
-        ctx.register.set_x(0x01);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0xA0);
+        ctx.cpu.register.set_x(0x01);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xA0);
     }
     #[test]
     fn test_lda_indirecty() {
@@ -807,72 +834,72 @@ mod tests {
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x00a4, 0xA0);
         ctx.ram.write(0x00a5, 0xA3);
-        ctx.register.set_y(0x01);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 0xA0);
+        ctx.cpu.register.set_y(0x01);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xA0);
     }
     #[test]
     fn test_rol_accumulator() {
         let program: Vec<u8> = vec!(0xA9, 146, 0x2A, 0x2A);
         let mut ctx = create_test_context(&program);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(2, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 36);
-        assert!(ctx.register.get_flag(StatusFlags::CARRY));
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 73);
-        assert!(!ctx.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 36);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 73);
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_rol() {
         let program: Vec<u8> = vec!(0x26, 0x22, 0x26, 0x22);
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x0022, 146);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0x0022), 36);
-        assert!(ctx.register.get_flag(StatusFlags::CARRY));
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0x0022), 73);
-        assert!(!ctx.register.get_flag(StatusFlags::CARRY));
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_ror_accumulator() {
         let program: Vec<u8> = vec!(0xA9, 147, 0x6A, 0x6A);
         let mut ctx = create_test_context(&program);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(2, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 73);
-        assert!(ctx.register.get_flag(StatusFlags::CARRY));
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
-        assert_eq!(ctx.register.get_a(), 164);
-        assert!(ctx.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 73);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 164);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_ror() {
         let program: Vec<u8> = vec!(0x66, 0x22, 0x66, 0x22);
         let mut ctx = create_test_context(&program);
         ctx.ram.write(0x0022, 147);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0x0022), 73);
-        assert!(ctx.register.get_flag(StatusFlags::CARRY));
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0x0022), 164);
-        assert!(ctx.register.get_flag(StatusFlags::CARRY));
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
     }
     #[test]
     fn test_sta() {
         let program:Vec<u8> = vec!(0x8d, 0xa5, 0x00);  // STA $00a5
         let mut ctx = create_test_context(&program);
-        ctx.register.set_a(0x05);
-        let mut cpu_bus = cpu_bus::CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu);
-        ctx.cpu.run_instructions(1, &mut cpu_bus, &mut ctx.register);
+        ctx.cpu.register.set_a(0x05);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0xa5u8 as usize), 0x05);
     }
 }

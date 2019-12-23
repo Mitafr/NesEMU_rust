@@ -20,6 +20,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(sdl_context: &sdl2::Sdl, name: &str) -> Renderer {
+        println!("RENDERER: Initializing ...");
         let video_subsys = sdl_context.video().unwrap();
         let window = video_subsys.window(name, SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE)
             .position_centered()
@@ -35,6 +36,7 @@ impl Renderer {
             .map_err(|e| e.to_string())
             .unwrap();
         let texture_creator = canvas.texture_creator();
+        println!("RENDERER: Initialized successfully");
         Renderer {
             renderer: canvas,
             display: [0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize],

@@ -19,18 +19,15 @@ use crate::ppu::palette::Palette;
 use crate::ppu::palette::PaletteVram;
 use crate::ppu::tile::Tile;
 use crate::rom::Cartbridge;
-use crate::Cycle;
 
 use std::boxed::Box;
 use std::fmt;
 
 #[derive(PartialEq)]
 pub enum PpuStatus {
-    BREAK,
-    ERROR,
     PROCESSING,
     RENDERING,
-    RENDERERNOTINITIALIZED,
+    INTERRUPTNMI,
 }
 
 const CYCLE_PER_LINE: i16 = 341;
@@ -70,6 +67,7 @@ impl Ppu {
     }
     pub fn write(&mut self, i: usize, v: u8) -> u8 {
         self.updated = true;
+        println!("Writing in PPU at {:x?}, value : {:x?} ({:08b})", i, v, v);
         self.register.write(i, v, &mut self.mem, &mut self.palette, &mut self.spr_mem)
     }
     pub fn init(&mut self, rom: &mut Cartbridge) {
@@ -107,9 +105,9 @@ impl Ppu {
                 1 => self.temp_tile_addr = self.register.get_addr() as usize,
                 2 => self.background.fetch_nametable(self.temp_tile_addr, &mut self.mem, &mut self.register),
                 3 => self.temp_tile_addr = self.register.get_addr() as usize,
-                4 => self.background.fetch_attribute(self.temp_tile_addr, &mut self.mem, &mut self.register),
+                4 => self.background.fetch_attribute(self.temp_tile_addr, &mut self.mem),
                 6 => self.background.fetch_loworder_byte(&mut self.mem, &mut self.register),
-                0 => self.background.fetch_highorder_byte(&mut self.mem, &mut self.register),
+                0 => self.background.fetch_highorder_byte(&mut self.mem),
                 _ => {}
             }
         }
@@ -117,14 +115,17 @@ impl Ppu {
             match self.dot % 8 {
                 1 => self.temp_tile_addr = self.register.get_addr() as usize,
                 2 => self.background.fetch_nametable(self.temp_tile_addr, &mut self.mem, &mut self.register),
-                4 => self.background.fetch_attribute(self.temp_tile_addr, &mut self.mem, &mut self.register),
+                4 => self.background.fetch_attribute(self.temp_tile_addr, &mut self.mem),
                 6 => self.background.fetch_loworder_byte(&mut self.mem, &mut self.register),
-                0 => self.background.fetch_highorder_byte(&mut self.mem, &mut self.register),
+                0 => self.background.fetch_highorder_byte(&mut self.mem),
                 _ => {}
             }
         }
         if self.line == 241 && self.dot == 1 {
             self.register.set_vblank();
+            if self.register.get_irq_enable() == 0x1 {
+                current_status = PpuStatus::INTERRUPTNMI;
+            }
         }
         if self.dot >= CYCLE_PER_LINE {
             self.dot = 0;
