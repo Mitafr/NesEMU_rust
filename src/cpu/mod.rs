@@ -23,7 +23,7 @@ pub enum EmulationStatus {
 #[derive(PartialEq)]
 pub enum CPUInterrupts {
     INTERRUPTNMI,
-    INTERRUPTIRQ,
+    // INTERRUPTIRQ,
     INTERRUPTNONE,
 }
 
@@ -45,7 +45,7 @@ impl Cpu {
             interrupt: CPUInterrupts::INTERRUPTNONE,
         }
     }
-    pub fn triggerNMI(&mut self) {
+    pub fn trigger_nmi(&mut self) {
         self.interrupt = CPUInterrupts::INTERRUPTNMI;
     }
     pub fn reset<B: Bus>(&mut self, bus: &mut B) -> Cycle {
@@ -93,13 +93,11 @@ impl Cpu {
         self.opcode_counter += 1;
         let res = self.execute_op(value, bus, opcode);
         match self.interrupt {
-            CPUInterrupts::INTERRUPTIRQ => {}
+            //CPUInterrupts::INTERRUPTIRQ => {}
             CPUInterrupts::INTERRUPTNMI => {
                 self.register.set_flag(StatusFlags::BREAK, false);
-                let pcH = (self.register.get_pc() >> 8) as u8;
-                let pcL = (self.register.get_pc() & 0xFF) as u8;
-                self.register.push_stack(pcH, bus);
-                self.register.push_stack(pcL, bus);
+                self.register.push_stack((self.register.get_pc() >> 8) as u8, bus);
+                self.register.push_stack((self.register.get_pc() & 0xFF) as u8, bus);
                 self.register.push_stack(self.register.get_sr() as u8, bus);
                 self.register.set_flag(StatusFlags::INTERRUPT, true);
 
@@ -462,7 +460,7 @@ impl Cpu {
                 let old: u8;
                 if opcode.mode == Addressing::Accumulator {
                     old = self.register.get_a();
-                    let a = self.register.set_a(old >> 1).get_a();
+                    let a = self.register.set_a(old>>1).get_a();
                     self.register
                         .set_flag(StatusFlags::ZERO, a == 0)
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0);
@@ -470,6 +468,7 @@ impl Cpu {
                     old = bus.peek(value as usize);
                     let m = bus.write(value as usize, old >> 1);
                     self.register
+                        .set_flag(StatusFlags::ZERO, m == 0)
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
                 }
                 self.register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);

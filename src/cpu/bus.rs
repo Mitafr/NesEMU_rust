@@ -48,7 +48,7 @@ impl<'a> Bus for CpuBus<'a> {
         match i {
             0..=0x1FFF => self.ram.write(i, v),
             0x2000..=0x3FFF => self.ppu.write(i, v),
-            0x4016 => self.controller.write(i, v),
+            0x4016 => self.controller.write(v),
             0x8000..=0xFFFF => self.rom.write(i, v),
             _ => {
                 println!("Wrong index => {:x?}", i);

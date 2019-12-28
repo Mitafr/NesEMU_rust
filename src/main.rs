@@ -1,9 +1,11 @@
 #[macro_use]
 extern crate lazy_static;
+extern crate ini;
 use sdl2;
 use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use ini::Ini;
 
 mod controller;
 mod cpu;
@@ -15,7 +17,9 @@ mod renderer;
 mod rom;
 
 use std::fmt;
+use std::fs;
 use std::option::Option;
+use std::path::Path;
 
 use cpu::Cpu;
 use rom::Cartbridge;
@@ -43,11 +47,13 @@ pub struct Context {
     cpu_ram: Ram,
     rom: Cartbridge,
     debugger: Option<PpuDebugger>,
-    renderer: Renderer,
+    renderer: Option<Renderer>,
     controller: Controller,
     events: EventPump,
     cpu_cycle: Cycle,
     ppu_cycle: Cycle,
+    config_path: String,
+    sdl_context: sdl2::Sdl,
 }
 
 impl Context {
@@ -61,7 +67,6 @@ impl Context {
         let sdl_context = sdl2::init().unwrap();
         let events: EventPump = sdl_context.event_pump().unwrap();
         let debugger = Some(PpuDebugger::new(&sdl_context));
-        let renderer = Renderer::new(&sdl_context, "NesEmu");
         let controller = Controller::new();
         Context {
             ppu: ppu,
@@ -71,9 +76,11 @@ impl Context {
             debugger: debugger,
             controller: controller,
             events: events,
-            renderer: renderer,
+            renderer: None,
             cpu_cycle: 0,
             ppu_cycle: 0,
+            config_path: String::from("config/config.ini"),
+            sdl_context,
         }
     }
     pub fn run(&mut self) -> EmulationStatus{
@@ -84,12 +91,17 @@ impl Context {
         for _ in 0..cpu_cb.0 * 3 {
             match self.ppu.run() {
                 PpuStatus::RENDERING => {
-                    self.ppu.background.draw(&mut self.renderer, &mut self.ppu.palette);
-                    self.ppu.sprites.draw(&mut self.renderer, &mut self.ppu.palette);
-                    self.renderer.draw_window();
+                    match &mut self.renderer {
+                        Some(renderer) => {
+                            self.ppu.background.draw(renderer, &mut self.ppu.palette);
+                            self.ppu.sprites.draw(renderer, &mut self.ppu.palette);
+                            renderer.draw_window();
+                        }
+                        None => {}
+                    }
                     println!("PPU: Rendering in progress");
                 }
-                PpuStatus::INTERRUPTNMI => self.cpu.triggerNMI(),
+                PpuStatus::INTERRUPTNMI => self.cpu.trigger_nmi(),
                 PpuStatus::PROCESSING => {}
             }
         }
@@ -131,7 +143,22 @@ impl Context {
         }
         status
     }
+    fn create_config_file(&self) {
+        if !Path::new("config").exists() {
+            fs::create_dir("config").unwrap();
+        }
+        if !Path::new(&self.config_path).exists() {
+            let mut conf = Ini::new();
+            conf.with_section(Some("Display".to_owned()))
+                .set("scale", "1.1");
+            conf.write_to_file(&self.config_path).unwrap();
+        }
+    }
     pub fn init(&mut self) {
+        self.create_config_file();
+        let conf = Ini::load_from_file(&self.config_path).unwrap();
+        let scale = conf.section(Some("Display".to_owned())).unwrap().get("scale").unwrap().parse::<f32>().unwrap();
+        self.renderer = Some(Renderer::new(&self.sdl_context, "NesEMU", scale));
         let mut cpu_bus = CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu, &mut self.controller);
         println!("CPU: Resetting");
         self.cpu_cycle += self.cpu.reset(&mut cpu_bus) as u64;
@@ -155,7 +182,10 @@ impl Context {
         self.ppu.reset();
         println!("PPU: Initializing ...");
         self.ppu.init(&mut self.rom);
-        self.renderer.reset();
+        match &mut self.renderer {
+            Some(renderer) => renderer.reset(),
+            None => {}
+        }
     }
 }
 

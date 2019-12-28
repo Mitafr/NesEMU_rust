@@ -33,6 +33,7 @@ impl Register {
 pub struct Controller {
     register: Register,
     addr: u16,
+    strobe: bool
 }
 
 impl Controller {
@@ -40,17 +41,25 @@ impl Controller {
         Controller {
             register: Register::new(),
             addr: 0x00,
+            strobe: false
         }
     }
-    pub fn write(&mut self, i: usize, v: u8) -> u8 {
-        println!("Write in Controller at {:x?} => {:x?}", i, v);
+    pub fn write(&mut self, v: u8) -> u8 {
         self.register.write(v);
+        self.strobe = self.register.bit&1 == 1;
+        if self.strobe {
+            self.addr = 0x00;
+        }
+        println!("Strobe Value {:?}", self.strobe);
         v
     }
-    pub fn read(&self) -> u8 {
-        //panic!("Not implemented yet");
-        let value = (self.register.bit << self.addr);
-        self.register.key
+    pub fn read(&mut self) -> u8 {
+        let value = self.register.key.wrapping_shr(self.addr as u32) & 1;
+        if !self.strobe {
+            self.addr = self.addr>>1;
+        }
+        println!("Reading Controller value {:x?} register Key {:x?} Addr {:08b}", value, self.register.key, self.addr);
+        value | 0x40
     }
     pub fn poll_events(&mut self, event: &Event) {
         match event {
