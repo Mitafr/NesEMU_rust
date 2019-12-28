@@ -8,7 +8,6 @@ use crate::ppu::sprite::Sprite;
 use crate::ppu::palette::Palette;
 use crate::ppu::palette::PaletteVram;
 
-const SCALE: u32 = 2;
 const SCREEN_HEIGHT: u32 = 224;
 const SCREEN_WIDTH: u32 = 256;
 
@@ -19,10 +18,10 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(sdl_context: &sdl2::Sdl, name: &str) -> Renderer {
+    pub fn new(sdl_context: &sdl2::Sdl, name: &str, scale: f32) -> Renderer {
         println!("RENDERER: Initializing ...");
         let video_subsys = sdl_context.video().unwrap();
-        let window = video_subsys.window(name, SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE)
+        let window = video_subsys.window(name, (SCREEN_WIDTH as f32 * scale).floor() as u32, (SCREEN_HEIGHT as f32 * scale).floor() as u32)
             .position_centered()
             .resizable()
             .build()
