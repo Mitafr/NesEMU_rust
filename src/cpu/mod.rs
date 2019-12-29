@@ -112,8 +112,10 @@ impl Cpu {
         (opcode.cycle as Cycle + self.extra_cycle, res)
     }
     #[allow(dead_code)]
-    fn run_instructions<B: Bus>(&mut self, n: usize, bus: &mut B) {
+    fn run_instructions<B: Bus>(&mut self, n: usize, bus: &mut B) -> (Cycle, EmulationStatus) {
+        let mut cycle: Cycle = 0;
         for _i in 0..n {
+            self.extra_cycle = 0;
             self.set_random_number(bus);
             let value = bus.peek(self.register.get_pc() as usize);
             self.register.incr_pc();
@@ -129,7 +131,9 @@ impl Cpu {
                 self.register.get_pc()
             );
             self.execute_op(value, bus, opcode);
+            cycle += opcode.cycle as Cycle + self.extra_cycle;
         }
+        (cycle, EmulationStatus::BREAK)
     }
 
     fn fetch_absolute_x<B: Bus>(&mut self, bus: &mut B) -> u16 {
@@ -364,7 +368,8 @@ impl Cpu {
                     .set_flag(StatusFlags::ZERO, y == m as u8);
             }
             Instruction::DEC => {
-                let res = bus.peek(value as usize).wrapping_sub(1);
+                let old_value = bus.peek(value as usize);
+                let res = old_value.wrapping_sub(1);
                 bus.write(value as usize, res);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
@@ -471,7 +476,7 @@ impl Cpu {
                         .set_flag(StatusFlags::ZERO, m == 0)
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
                 }
-                self.register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
+                self.register.set_flag(StatusFlags::CARRY, old & 0x1 != 0);
             }
             Instruction::NOP => return EmulationStatus::PROCESSING,
             Instruction::ORA => {
@@ -496,15 +501,16 @@ impl Cpu {
                 self.register.push_stack(status, bus);
             }
             Instruction::PLA => {
+                let a = self.register.get_a();
                 let res = self.register.pop_stack(bus);
                 self.register
-                    .set_flag(StatusFlags::ZERO, res == 0)
-                    .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
+                    .set_flag(StatusFlags::ZERO, a == 0)
+                    .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0)
                     .set_a(res as u8);
             }
             Instruction::PLP => {
                 let res = self.register.pop_stack(bus);
-                self.register.set_sp(res as u8);
+                self.register.set_sr(res as u8);
             }
             Instruction::ROL => {
                 if opcode.mode == Addressing::Accumulator {
@@ -526,6 +532,7 @@ impl Cpu {
                         .set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
                     bus.write(value as usize, m);
                 }
+                self.register.set_flag(StatusFlags::ZERO, self.register.get_a() == 0);
             }
             Instruction::ROR => {
                 if opcode.mode == Addressing::Accumulator {
@@ -761,12 +768,147 @@ mod tests {
         assert_eq!(ctx.ram.peek(0x0004), 0x04);
     }
     #[test]
+    fn test_lsr_accumulator() {
+        let program:Vec<u8> = vec!(0x4a); // LSR
+        let mut ctx = create_test_context(&program);
+        ctx.cpu.register.set_a(0x41);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x20);
+        assert_eq!(ctx.cpu.register.get_flag(StatusFlags::CARRY), true);
+    }
+    #[test]
+    fn test_plp() {
+        let program:Vec<u8> = vec!(0x28); // PLP
+        let mut ctx = create_test_context(&program);
+        ctx.cpu.register.set_flag(StatusFlags::CARRY, true);
+        ctx.cpu.register.set_flag(StatusFlags::NEGATIVE, true);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.register.push_stack(ctx.cpu.register.get_sr(), &mut cpu_bus);
+        ctx.cpu.register.set_flag(StatusFlags::CARRY, false);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::CARRY));
+        assert!(ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::ZERO));
+    }
+    #[test]
     fn test_lda_immediate() {
         let program:Vec<u8> = vec!(0xa9, 0xff); // LDA #$ff
         let mut ctx = create_test_context(&program);
         let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
         ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.cpu.register.get_a(), 0xFF);
+    }
+    #[test]
+    fn test_bne() {
+        let program:Vec<u8> = vec!(0xD0, 0x02, 0xa9, 0xff, 0x00); // BNE $02
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x0c);
+        ctx.cpu.register.set_flag(StatusFlags::ZERO, true);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xff);
+    }
+    #[test]
+    fn test_bmi() {
+        let program:Vec<u8> = vec!(0x30, 0x02, 0xa9, 0xff, 0x00); // BMI $02
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x0c);
+        ctx.cpu.register.set_flag(StatusFlags::NEGATIVE, false);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xff);
+    }
+    #[test]
+    fn test_bpl() {
+        let program:Vec<u8> = vec!(0x10, 0x02, 0xa9, 0xff, 0x00); // BPL $02
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x0c);
+        ctx.cpu.register.set_flag(StatusFlags::NEGATIVE, true);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xff);
+    }
+    #[test]
+    fn test_bvc() {
+        let program:Vec<u8> = vec!(0x50, 0x02, 0xa9, 0xff, 0x00); // BVC $02
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x0c);
+        ctx.cpu.register.set_flag(StatusFlags::OVERFLOW, true);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(3, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xff);
+        assert_eq!(res.0, 2 + 2 + 7);
+        ctx = create_test_context(&program);
+        ctx.cpu.register.set_flag(StatusFlags::OVERFLOW, false);
+        cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x00);
+        assert_eq!(res.0, 2 + 1 + 7);
+    }
+    #[test]
+    fn test_bvs() {
+        let program:Vec<u8> = vec!(0x70, 0x02, 0xa9, 0xff, 0x00); // BVS $02
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x0c);
+        ctx.cpu.register.set_flag(StatusFlags::OVERFLOW, false);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(3, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0xff);
+        assert_eq!(res.0, 2 + 2 + 7);
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x0c);
+        ctx.cpu.register.set_flag(StatusFlags::OVERFLOW, true);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(2, &mut cpu_bus);
+        assert_eq!(ctx.cpu.register.get_a(), 0x00);
+        assert_eq!(res.0, 2 + 1 + 7);
+    }
+    #[test]
+    fn test_dec_zeropage() {
+        let program:Vec<u8> = vec!(0xC6, 0x10, 0xC6, 0x10, 0xD6, 0x0F); // DEC #$10
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x10, 0x02);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x10), 0x01);
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert_eq!(res.0, 5);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x10), 0x00);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert_eq!(res.0, 5);
+        ctx.cpu.register.set_x(0x01);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x10), 0xff);
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert_eq!(res.0, 6);
+    }
+    #[test]
+    fn test_dec_absolute() {
+        let program:Vec<u8> = vec!(0xCE, 0x01, 0x10, 0xCE, 0x01, 0x10, 0xDE, 0x00, 0x10); // DEC #$10
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x1001, 0x02);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x1001), 0x01);
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert_eq!(res.0, 6);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x1001), 0x00);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert_eq!(res.0, 6);
+        ctx.cpu.register.set_x(0x1);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x1001), 0xff);
+        assert!(!ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        assert_eq!(res.0, 7);
     }
     #[test]
     fn test_lda_zeroepage() {
