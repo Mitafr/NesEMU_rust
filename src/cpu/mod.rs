@@ -1043,4 +1043,24 @@ mod tests {
         ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0xa5u8 as usize), 0x05);
     }
+    #[test]
+    fn test_stx() {
+        let program:Vec<u8> = vec!(0x96, 0xa5, 0x8e, 0xa7, 0x00, 0x86, 0xaa);  // STX $05,Y
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x00a7, 0x00);
+        ctx.cpu.register.set_y(0x02);
+        ctx.cpu.register.set_x(0xaa);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x00a7), 0xaa);
+        assert_eq!(res.0, 4);
+        ctx.cpu.register.set_x(0xff);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x00a7), 0xff);
+        assert_eq!(res.0, 4);
+        ctx.cpu.register.set_x(0x01);
+        let res = ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert_eq!(cpu_bus.peek(0x00aa), 0x01);
+        assert_eq!(res.0, 3);
+    }
 }
