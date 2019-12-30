@@ -67,7 +67,6 @@ impl Ppu {
     }
     pub fn write(&mut self, i: usize, v: u8) -> u8 {
         self.updated = true;
-        println!("Writing in PPU at {:x?}, value : {:x?} ({:08b})", i, v, v);
         self.register.write(i, v, &mut self.mem, &mut self.palette, &mut self.spr_mem)
     }
     pub fn init(&mut self, rom: &mut Cartbridge) {
@@ -123,7 +122,7 @@ impl Ppu {
         }
         if self.line == 241 && self.dot == 1 {
             self.register.set_vblank();
-            if self.register.get_irq_enable() == 0x1 {
+            if self.register.get_nmi_enable() == 0x1 {
                 current_status = PpuStatus::INTERRUPTNMI;
             }
         }
@@ -134,7 +133,7 @@ impl Ppu {
                 self.line = -1;
                 self.register.clear_vblank();
                 self.register.clear_spritehit();
-                self.sprites.build(&mut self.spr_mem, &mut self.register, &mut self.mem);
+                //self.sprites.build(&mut self.spr_mem, &mut self.register, &mut self.mem);
                 current_status = PpuStatus::RENDERING;
             }
         }

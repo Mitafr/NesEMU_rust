@@ -86,7 +86,7 @@ impl Memory for Cartbridge {
     fn get_size(&self) -> usize {
         self.size
     }
-    fn peek(&mut self, i: usize) -> u8 {
+    fn peek(&self, i: usize) -> u8 {
         self.program[i - self.offset]
     }
     fn write(&mut self, i: usize, value: u8) -> u8 {

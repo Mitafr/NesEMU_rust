@@ -54,9 +54,6 @@ impl Background {
             self.current_pattern[(i - self.tile_addr + 8) as usize] = vram.peek(i as usize);
         }
         self.current_tile.build_tile(&self.current_pattern, (self.nametable_addr - 0x2000) as usize);
-        if !self.empty_pattern {
-            println!("Non empty tile");
-        }
         self.tiles.push(self.current_tile.clone());
         self.current_tile = Tile::new();
         self.empty_pattern = true;
