@@ -27,7 +27,7 @@ pub trait Register {
     fn get_background_table(&self) -> u8;
     fn get_sprite_size(&self) -> u8;
     fn get_slave_mode(&self) -> u8;
-    fn get_irq_enable(&self) -> u8;
+    fn get_nmi_enable(&self) -> u8;
     fn get_ctrl_zero(&self) -> u8;
 
     // CTRL $2001
@@ -113,7 +113,7 @@ impl Register for PpuRegister {
     fn get_slave_mode(&self) -> u8 {
         (self.r_ctrl_zero >> 6) & 0x01
     }
-    fn get_irq_enable(&self) -> u8 {
+    fn get_nmi_enable(&self) -> u8 {
         (self.r_ctrl_zero >> 7) & 0x01
     }
     fn get_ctrl_zero(&self) -> u8 {
@@ -274,7 +274,7 @@ impl fmt::Display for PpuRegister {
         writeln!(f, "| 4 |BCKGRND_TABLE\t => {:x?}", self.get_background_table())?;
         writeln!(f, "| 5 |SPRITE_SIZE  \t => {:x?}", self.get_sprite_size())?;
         writeln!(f, "| 6 |SLAVE_MODE   \t => {:x?}", self.get_slave_mode())?;
-        writeln!(f, "| 7 |IRQ_ENABLE   \t => {:x?}", self.get_irq_enable())?;
+        writeln!(f, "| 7 |IRQ_ENABLE   \t => {:x?}", self.get_nmi_enable())?;
         writeln!(f, "+---+-----------+-----------------+")?;
         writeln!(f, "|CTRL_2001 => {:08b}", self.get_ctrl_one())?;
         writeln!(f, "|bit|libelle                |value            |")?;
