@@ -50,7 +50,7 @@ impl Controller {
         if self.strobe {
             self.addr = 0x00;
         }
-        println!("Strobe Value {:?}", self.strobe);
+        self.addr = v as u16;
         v
     }
     pub fn read(&mut self) -> u8 {
@@ -63,70 +63,22 @@ impl Controller {
     }
     pub fn poll_events(&mut self, event: &Event) {
         match event {
-            Event::KeyDown { keycode: Some(Keycode::A), ..} => {
-                println!("Key A has been pressed !");
-                self.register.key |= KeyStatus::A as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::B), ..} => {
-                println!("Key B has been pressed !");
-                self.register.key |= KeyStatus::B as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::C), ..} => {
-                println!("Key Select has been pressed !");
-                self.register.key |= KeyStatus::Select as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::D), ..} => {
-                println!("Key Start has been pressed !");
-                self.register.key |= KeyStatus::Start as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::Up), ..} => {
-                println!("Key Up has been pressed !");
-                self.register.key |= KeyStatus::Up as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::Down), ..} => {
-                println!("Key Down has been pressed !");
-                self.register.key |= KeyStatus::Down as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::Left), ..} => {
-                println!("Key Left has been pressed !");
-                self.register.key |= KeyStatus::Left as u8;
-            }
-            Event::KeyDown { keycode: Some(Keycode::Right), ..} => {
-                println!("Key Right has been pressed !");
-                self.register.key |= KeyStatus::Right as u8;
-            }
-            Event::KeyUp { keycode: Some(Keycode::A), ..} => {
-                println!("Key A has been released !");
-                self.register.key &= KeyStatus::A as u8 ^ 1;
-            }
-            Event::KeyUp { keycode: Some(Keycode::B), ..} => {
-                println!("Key B has been released !");
-                self.register.key &= KeyStatus::B as u8 ^ 1;
-            }
-            Event::KeyUp { keycode: Some(Keycode::C), ..} => {
-                println!("Key Select has been released !");
-                self.register.key &= KeyStatus::Select as u8 ^ 1;                
-            }
-            Event::KeyUp { keycode: Some(Keycode::D), ..} => {
-                println!("Key Start has been released !");
-                self.register.key &= KeyStatus::Start as u8 ^ 1;
-            }
-            Event::KeyUp { keycode: Some(Keycode::Up), ..} => {
-                println!("Key Up has been released !");
-                self.register.key &= KeyStatus::Up as u8 ^ 1;
-            }
-            Event::KeyUp { keycode: Some(Keycode::Down), ..} => {
-                println!("Key Down has been released !");
-                self.register.key &= KeyStatus::Down as u8 ^ 1;
-            }
-            Event::KeyUp { keycode: Some(Keycode::Left), ..} => {
-                println!("Key Left has been released !");
-                self.register.key &= KeyStatus::Left as u8 ^ 1;
-            }
-            Event::KeyUp { keycode: Some(Keycode::Right), ..} => {
-                println!("Key Right has been released !");
-                self.register.key &= KeyStatus::Right as u8 ^ 1;
-            }
+            Event::KeyDown { keycode: Some(Keycode::A), ..} => self.register.key |= KeyStatus::A as u8,
+            Event::KeyDown { keycode: Some(Keycode::B), ..} => self.register.key |= KeyStatus::B as u8,
+            Event::KeyDown { keycode: Some(Keycode::C), ..} => self.register.key |= KeyStatus::Select as u8,
+            Event::KeyDown { keycode: Some(Keycode::Return), ..} => self.register.key |= KeyStatus::Start as u8,
+            Event::KeyDown { keycode: Some(Keycode::Up), ..} => self.register.key |= KeyStatus::Up as u8,
+            Event::KeyDown { keycode: Some(Keycode::Down), ..} => self.register.key |= KeyStatus::Down as u8,
+            Event::KeyDown { keycode: Some(Keycode::Left), ..} => self.register.key |= KeyStatus::Left as u8,
+            Event::KeyDown { keycode: Some(Keycode::Right), ..} => self.register.key |= KeyStatus::Right as u8,
+            Event::KeyUp { keycode: Some(Keycode::A), ..} => self.register.key &= KeyStatus::A as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::B), ..} => self.register.key &= KeyStatus::B as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::C), ..} => self.register.key &= KeyStatus::Select as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::D), ..} => self.register.key &= KeyStatus::Start as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::Up), ..} => self.register.key &= KeyStatus::Up as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::Down), ..} => self.register.key &= KeyStatus::Down as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::Left), ..} => self.register.key &= KeyStatus::Left as u8 ^ 1,
+            Event::KeyUp { keycode: Some(Keycode::Right), ..} => self.register.key &= KeyStatus::Right as u8 ^ 1,
             _ => {}
         }
     }

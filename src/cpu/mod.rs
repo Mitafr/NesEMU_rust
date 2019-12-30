@@ -280,11 +280,13 @@ impl Cpu {
                 }
             }
             Instruction::BIT => {
-                let value = self.register.get_a() & value as u8;
+                let a = self.register.get_a();
+                let m = bus.peek(value as usize);
+                let res =  a & m;
                 self.register
-                    .set_flag(StatusFlags::ZERO, value == 0)
-                    .set_flag(StatusFlags::OVERFLOW, value & (1 << 6) != 0)
-                    .set_flag(StatusFlags::NEGATIVE, value & (1 << 7) != 0);
+                    .set_flag(StatusFlags::ZERO, res == 0)
+                    .set_flag(StatusFlags::OVERFLOW, m & (1 << 6) != 0)
+                    .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
             }
             Instruction::BMI => {
                 if self.register.get_flag(StatusFlags::NEGATIVE) {
@@ -704,6 +706,16 @@ mod tests {
         }
     }
     #[test]
+    fn test_reset() {
+        let mut ctx = create_test_context(&Vec::new());
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.reset(&mut cpu_bus);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::INTERRUPT));
+        assert_eq!(ctx.cpu.register.get_x(), 0);
+        assert_eq!(ctx.cpu.register.get_a(), 0);
+        assert_eq!(ctx.cpu.register.get_y(), 0);
+    }
+    #[test]
     fn test_adc_immediate() {
         let program:Vec<u8> = vec!(0x69, 0xa1); // ADC #$a1
         let mut ctx = create_test_context(&program);
@@ -766,6 +778,24 @@ mod tests {
         let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
         ctx.cpu.run_instructions(1, &mut cpu_bus);
         assert_eq!(ctx.ram.peek(0x0004), 0x04);
+    }
+    #[test]
+    fn test_bit() {
+        let program:Vec<u8> = vec!(0x24, 0x04); // BIT $04
+        let mut ctx = create_test_context(&program);
+        ctx.ram.write(0x0004, 0xaa);
+        ctx.cpu.register.set_a(0x40);
+        let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::ZERO));
+        assert!(ctx.cpu.register.get_flag(StatusFlags::NEGATIVE));
+        let program:Vec<u8> = vec!(0x24, 0x04); // BIT $04
+        ctx = create_test_context(&program);
+        ctx.cpu.register.set_a(0x40);
+        ctx.ram.write(0x0004, 0x40);
+        cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
+        ctx.cpu.run_instructions(1, &mut cpu_bus);
+        assert!(ctx.cpu.register.get_flag(StatusFlags::OVERFLOW));
     }
     #[test]
     fn test_lsr_accumulator() {
