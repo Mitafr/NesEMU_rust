@@ -47,7 +47,7 @@ impl<'a> Bus for CpuBus<'a> {
         match i {
             0..=0x1FFF => self.ram.write(i, v),
             0x2000..=0x3FFF => self.ppu.write(i, v),
-            0x4000..=0x4010 => 0,
+            0x4000..=0x4014 => 0,
             0x4015 => 0,
             0x4016 => self.controller.write(v),
             0x4017 => self.controller.write(v),
