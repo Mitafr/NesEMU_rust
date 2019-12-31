@@ -1,85 +1,61 @@
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-
+#[derive(Debug, Copy, Clone)]
 pub enum KeyStatus {
-    A = 0b0000_0001,
-    B = 0b0000_0010,
-    Select = 0b0000_0100,
-    Start = 0b0000_1000,
-    Up = 0b0001_0000,
-    Down = 0b0010_0000,
-    Left = 0b0100_0000,
-    Right = 0b1000_0000,
-}
-
-struct Register {
-    bit: u8,
-    key: u8,
-}
-
-impl Register {
-    pub fn new() -> Register {
-        Register {
-            bit: 0x00,
-            key: 0x00,
-        }
-    }
-    pub fn write(&mut self, v: u8) {
-        self.bit = v;
-    }
+    Idle = 0,
+    A = 1 << 0,
+    B = 1 << 1,
+    Select = 1 << 2,
+    Start = 1 << 3,
+    Up = 1 << 4,
+    Down = 1 << 5,
+    Left = 1 << 6,
+    Right = 1 << 7,
 }
 
 pub struct Controller {
-    register: Register,
-    addr: u16,
-    strobe: bool
+    addr: u8,
+    strobe: bool,
+    key: KeyStatus,
 }
 
 impl Controller {
     pub fn new() -> Controller {
         Controller {
-            register: Register::new(),
             addr: 0x00,
-            strobe: false
+            strobe: false,
+            key: KeyStatus::Idle,
         }
     }
     pub fn write(&mut self, v: u8) -> u8 {
-        self.register.write(v);
-        self.strobe = self.register.bit&1 == 1;
+        self.strobe = v&1 == 1;
         if self.strobe {
-            self.addr = 0x00;
+            self.addr = self.key as u8;
         }
-        self.addr = v as u16;
         v
     }
     pub fn read(&mut self) -> u8 {
-        let value = self.register.key.wrapping_shr(self.addr as u32) & 1;
-        if !self.strobe {
+        if self.strobe {
+            self.addr = self.key as u8;
+            self.addr & 1
+        } else {
+            let old = self.addr;
             self.addr = self.addr>>1;
+            old&1
         }
-        println!("Reading Controller value {:x?} register Key {:x?} Addr {:08b}", value, self.register.key, self.addr);
-        value | 0x40
     }
     pub fn poll_events(&mut self, event: &Event) {
         match event {
-            Event::KeyDown { keycode: Some(Keycode::A), ..} => self.register.key |= KeyStatus::A as u8,
-            Event::KeyDown { keycode: Some(Keycode::B), ..} => self.register.key |= KeyStatus::B as u8,
-            Event::KeyDown { keycode: Some(Keycode::C), ..} => self.register.key |= KeyStatus::Select as u8,
-            Event::KeyDown { keycode: Some(Keycode::Return), ..} => self.register.key |= KeyStatus::Start as u8,
-            Event::KeyDown { keycode: Some(Keycode::Up), ..} => self.register.key |= KeyStatus::Up as u8,
-            Event::KeyDown { keycode: Some(Keycode::Down), ..} => self.register.key |= KeyStatus::Down as u8,
-            Event::KeyDown { keycode: Some(Keycode::Left), ..} => self.register.key |= KeyStatus::Left as u8,
-            Event::KeyDown { keycode: Some(Keycode::Right), ..} => self.register.key |= KeyStatus::Right as u8,
-            Event::KeyUp { keycode: Some(Keycode::A), ..} => self.register.key &= KeyStatus::A as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::B), ..} => self.register.key &= KeyStatus::B as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::C), ..} => self.register.key &= KeyStatus::Select as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::D), ..} => self.register.key &= KeyStatus::Start as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::Up), ..} => self.register.key &= KeyStatus::Up as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::Down), ..} => self.register.key &= KeyStatus::Down as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::Left), ..} => self.register.key &= KeyStatus::Left as u8 ^ 1,
-            Event::KeyUp { keycode: Some(Keycode::Right), ..} => self.register.key &= KeyStatus::Right as u8 ^ 1,
-            _ => {}
+            Event::KeyDown { keycode: Some(Keycode::A), ..} => self.key = KeyStatus::A,
+            Event::KeyDown { keycode: Some(Keycode::B), ..} => self.key = KeyStatus::B,
+            Event::KeyDown { keycode: Some(Keycode::C), ..} => self.key = KeyStatus::Select,
+            Event::KeyDown { keycode: Some(Keycode::Return), ..} => self.key = KeyStatus::Start,
+            Event::KeyDown { keycode: Some(Keycode::Up), ..} => self.key = KeyStatus::Up,
+            Event::KeyDown { keycode: Some(Keycode::Down), ..} => self.key = KeyStatus::Down,
+            Event::KeyDown { keycode: Some(Keycode::Left), ..} => self.key = KeyStatus::Left,
+            Event::KeyDown { keycode: Some(Keycode::Right), ..} => self.key = KeyStatus::Right,
+            _ => {self.key = KeyStatus::Idle}
         }
     }
 }
