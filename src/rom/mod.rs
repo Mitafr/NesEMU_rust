@@ -58,6 +58,7 @@ impl Cartbridge {
             panic!("ROM: Invalid ROM header");
         }
         let prg_pages = data[4] as usize; // 2
+        println!("ROM: PRG_PAGES: {}", prg_pages);
         let chr_pages = data[5] as usize; // 1
         let _rom_control_one = data[6] & 0x01; // 0
         let mut character_rom_start = 0x0010 + prg_pages * 0x4000; // 32784
@@ -87,11 +88,10 @@ impl Memory for Cartbridge {
         self.size
     }
     fn peek(&self, i: usize) -> u8 {
-        self.program[i - self.offset]
+        self.program[i]
     }
     fn write(&mut self, i: usize, value: u8) -> u8 {
-        println!("Writing in RAM => {:x?} at index {:x}", value, i);
-        self.program[i - self.offset] = value;
+        self.program[i] = value;
         value
     }
     fn get_mem(&self) -> &[u8] {

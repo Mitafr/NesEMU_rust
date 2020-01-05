@@ -34,12 +34,14 @@ impl<'a> Bus for CpuBus<'a> {
         match i & 0xFFFF {
             0..=0x1FFF => self.ram.peek(i),
             0x2000..=0x3FFF => self.ppu.peek(i),
+            0x4000..=0x4014 => 0,
             0x4015 => 0,
             0x4016 => self.controller.read(),
             0x4017 => self.controller.read(),
-            0x8000..=0xBFFF if self.rom.get_size() <= 0x4010 => self.rom.peek(i + 0x4000),
-            0x8000..=0xBFFF => self.rom.peek(i),
-            0xC000..=0xFFFF => self.rom.peek(i),
+            0x6000..=0x7FFF => self.ram.peek(i - 0x6000),
+            0x8000..=0xBFFF if self.rom.get_size() <= 0x4010 => self.rom.peek(i-0x8000),
+            0x8000..=0xBFFF => self.rom.peek(i - 0x8000),
+            0xC000..=0xFFFF => self.rom.peek(i - 0xC000),
             _ => panic!("Wrong index => {:x?}", i),
         }
     }
@@ -51,7 +53,7 @@ impl<'a> Bus for CpuBus<'a> {
             0x4015 => 0,
             0x4016 => self.controller.write(v),
             0x4017 => self.controller.write(v),
-            0x8000..=0xFFFF => self.rom.write(i, v),
+            0x6000..=0x7FFF => self.ram.write(i - 0x6000, v),
             _ => panic!("Wrong index => {:x?}", i),
         }
     }

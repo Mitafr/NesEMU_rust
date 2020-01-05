@@ -82,6 +82,14 @@ lazy_static! {
         map.insert(0xCA, Opcode{ name: Instruction::DEX, mode: Addressing::Implied, cycle: 2});
         map.insert(0x88, Opcode{ name: Instruction::DEY, mode: Addressing::Implied, cycle: 2});
 
+        map.insert(0xC7, Opcode{ name: Instruction::DCP, mode: Addressing::ZeroPage, cycle: 5});
+        map.insert(0xD7, Opcode{ name: Instruction::DCP, mode: Addressing::ZeroPageX, cycle: 6});
+        map.insert(0xCF, Opcode{ name: Instruction::DCP, mode: Addressing::Absolute, cycle: 6});
+        map.insert(0xDF, Opcode{ name: Instruction::DCP, mode: Addressing::AbsoluteX, cycle: 6});
+        map.insert(0xDB, Opcode{ name: Instruction::DCP, mode: Addressing::AbsoluteY, cycle: 6});
+        map.insert(0xC3, Opcode{ name: Instruction::DCP, mode: Addressing::IndexedIndirect, cycle: 8});
+        map.insert(0xD3, Opcode{ name: Instruction::DCP, mode: Addressing::IndirectIndexed, cycle: 7});
+
         map.insert(0x49, Opcode{ name: Instruction::EOR, mode: Addressing::Immediate, cycle: 2});
         map.insert(0x45, Opcode{ name: Instruction::EOR, mode: Addressing::ZeroPage, cycle: 3});
         map.insert(0x55, Opcode{ name: Instruction::EOR, mode: Addressing::ZeroPageX, cycle: 4});
@@ -99,10 +107,25 @@ lazy_static! {
         map.insert(0xE8, Opcode{ name: Instruction::INX, mode: Addressing::Implied, cycle: 2});
         map.insert(0xC8, Opcode{ name: Instruction::INY, mode: Addressing::Implied, cycle: 2});
 
+        map.insert(0xE7, Opcode{ name: Instruction::ISB, mode: Addressing::ZeroPage, cycle: 5});
+        map.insert(0xF7, Opcode{ name: Instruction::ISB, mode: Addressing::ZeroPageX, cycle: 6});
+        map.insert(0xE3, Opcode{ name: Instruction::ISB, mode: Addressing::IndexedIndirect, cycle: 8});
+        map.insert(0xF3, Opcode{ name: Instruction::ISB, mode: Addressing::IndirectIndexed, cycle: 8});
+        map.insert(0xEF, Opcode{ name: Instruction::ISB, mode: Addressing::Absolute, cycle: 6});
+        map.insert(0xFF, Opcode{ name: Instruction::ISB, mode: Addressing::AbsoluteX, cycle: 7});
+        map.insert(0xFB, Opcode{ name: Instruction::ISB, mode: Addressing::AbsoluteY, cycle: 7});
+
         map.insert(0x4C, Opcode{ name: Instruction::JMP, mode: Addressing::Absolute, cycle: 3});
         map.insert(0x6C, Opcode{ name: Instruction::JMP, mode: Addressing::IndirectAbsolute, cycle: 5});
 
         map.insert(0x20, Opcode{ name: Instruction::JSR, mode: Addressing::Absolute, cycle: 6});
+
+        map.insert(0xA7, Opcode{ name: Instruction::LAX, mode: Addressing::ZeroPage, cycle: 3});
+        map.insert(0xB7, Opcode{ name: Instruction::LAX, mode: Addressing::ZeroPageY, cycle: 4});
+        map.insert(0xA3, Opcode{ name: Instruction::LAX, mode: Addressing::IndexedIndirect, cycle: 6});
+        map.insert(0xB3, Opcode{ name: Instruction::LAX, mode: Addressing::IndirectIndexed, cycle: 5});
+        map.insert(0xAF, Opcode{ name: Instruction::LAX, mode: Addressing::Absolute, cycle: 4});
+        map.insert(0xBF, Opcode{ name: Instruction::LAX, mode: Addressing::AbsoluteY, cycle: 4});
 
         map.insert(0xA9, Opcode{ name: Instruction::LDA, mode: Addressing::Immediate, cycle: 2});
         map.insert(0xA5, Opcode{ name: Instruction::LDA, mode: Addressing::ZeroPage, cycle: 3});
@@ -132,6 +155,38 @@ lazy_static! {
         map.insert(0x5E, Opcode{ name: Instruction::LSR, mode: Addressing::AbsoluteX, cycle: 7});
 
         map.insert(0xEA, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        map.insert(0x1A, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        map.insert(0x3A, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        map.insert(0x5A, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        map.insert(0x7A, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        map.insert(0xDA, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        map.insert(0xFA, Opcode{ name: Instruction::NOP, mode: Addressing::Implied, cycle: 2});
+        
+        map.insert(0x04, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPage, cycle: 3});
+        map.insert(0x44, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPage, cycle: 3});
+        map.insert(0x64, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPage, cycle: 3});
+        
+        map.insert(0x0C, Opcode{ name: Instruction::NOP, mode: Addressing::Absolute, cycle: 4});
+        
+        map.insert(0x14, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPageX, cycle: 4});
+        map.insert(0x34, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPageX, cycle: 4});
+        map.insert(0x54, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPageX, cycle: 4});
+        map.insert(0x74, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPageX, cycle: 4});
+        map.insert(0xD4, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPageX, cycle: 4});
+        map.insert(0xF4, Opcode{ name: Instruction::NOP, mode: Addressing::ZeroPageX, cycle: 4});
+        
+        map.insert(0x1C, Opcode{ name: Instruction::NOP, mode: Addressing::AbsoluteX, cycle: 4});
+        map.insert(0x3C, Opcode{ name: Instruction::NOP, mode: Addressing::AbsoluteX, cycle: 4});
+        map.insert(0x5C, Opcode{ name: Instruction::NOP, mode: Addressing::AbsoluteX, cycle: 4});
+        map.insert(0x7C, Opcode{ name: Instruction::NOP, mode: Addressing::AbsoluteX, cycle: 4});
+        map.insert(0xDC, Opcode{ name: Instruction::NOP, mode: Addressing::AbsoluteX, cycle: 4});
+        map.insert(0xFC, Opcode{ name: Instruction::NOP, mode: Addressing::AbsoluteX, cycle: 4});
+        
+        map.insert(0x80, Opcode{ name: Instruction::NOP, mode: Addressing::Immediate, cycle: 2});
+        map.insert(0x82, Opcode{ name: Instruction::NOP, mode: Addressing::Immediate, cycle: 2});
+        map.insert(0x89, Opcode{ name: Instruction::NOP, mode: Addressing::Immediate, cycle: 2});
+        map.insert(0xC2, Opcode{ name: Instruction::NOP, mode: Addressing::Immediate, cycle: 2});
+        map.insert(0xE2, Opcode{ name: Instruction::NOP, mode: Addressing::Immediate, cycle: 2});
 
         map.insert(0x09, Opcode{ name: Instruction::ORA, mode: Addressing::Immediate, cycle: 2});
         map.insert(0x05, Opcode{ name: Instruction::ORA, mode: Addressing::ZeroPage, cycle: 3});
@@ -147,6 +202,14 @@ lazy_static! {
         map.insert(0x68, Opcode{ name: Instruction::PLA, mode: Addressing::Implied, cycle: 4});
         map.insert(0x28, Opcode{ name: Instruction::PLP, mode: Addressing::Implied, cycle: 4});
 
+        map.insert(0x27, Opcode{ name: Instruction::RLA, mode: Addressing::ZeroPage, cycle: 5});
+        map.insert(0x37, Opcode{ name: Instruction::RLA, mode: Addressing::ZeroPageX, cycle: 6});
+        map.insert(0x23, Opcode{ name: Instruction::RLA, mode: Addressing::IndexedIndirect, cycle: 8});
+        map.insert(0x33, Opcode{ name: Instruction::RLA, mode: Addressing::IndirectIndexed, cycle: 8});
+        map.insert(0x2F, Opcode{ name: Instruction::RLA, mode: Addressing::Absolute, cycle: 6});
+        map.insert(0x3F, Opcode{ name: Instruction::RLA, mode: Addressing::AbsoluteX, cycle: 7});
+        map.insert(0x3B, Opcode{ name: Instruction::RLA, mode: Addressing::AbsoluteY, cycle: 7});
+
         map.insert(0x2A, Opcode{ name: Instruction::ROL, mode: Addressing::Accumulator, cycle: 2});
         map.insert(0x26, Opcode{ name: Instruction::ROL, mode: Addressing::ZeroPage, cycle: 5});
         map.insert(0x36, Opcode{ name: Instruction::ROL, mode: Addressing::ZeroPageX, cycle: 6});
@@ -159,9 +222,22 @@ lazy_static! {
         map.insert(0x6E, Opcode{ name: Instruction::ROR, mode: Addressing::Absolute, cycle: 6});
         map.insert(0x7E, Opcode{ name: Instruction::ROR, mode: Addressing::AbsoluteX, cycle: 7});
 
+        map.insert(0x67, Opcode{ name: Instruction::RRA, mode: Addressing::ZeroPage, cycle: 5});
+        map.insert(0x77, Opcode{ name: Instruction::RRA, mode: Addressing::ZeroPageX, cycle: 6});
+        map.insert(0x63, Opcode{ name: Instruction::RRA, mode: Addressing::IndexedIndirect, cycle: 8});
+        map.insert(0x73, Opcode{ name: Instruction::RRA, mode: Addressing::IndirectIndexed, cycle: 8});
+        map.insert(0x6F, Opcode{ name: Instruction::RRA, mode: Addressing::Absolute, cycle: 6});
+        map.insert(0x7F, Opcode{ name: Instruction::RRA, mode: Addressing::AbsoluteX, cycle: 7});
+        map.insert(0x7B, Opcode{ name: Instruction::RRA, mode: Addressing::AbsoluteY, cycle: 7});
+
         map.insert(0x40, Opcode{ name: Instruction::RTI, mode: Addressing::Implied, cycle: 6});
         map.insert(0x60, Opcode{ name: Instruction::RTS, mode: Addressing::Implied, cycle: 6});
 
+        map.insert(0x87, Opcode{ name: Instruction::SAX, mode: Addressing::ZeroPage, cycle: 3});
+        map.insert(0x97, Opcode{ name: Instruction::SAX, mode: Addressing::ZeroPageY, cycle: 4});
+        map.insert(0x83, Opcode{ name: Instruction::SAX, mode: Addressing::IndexedIndirect, cycle: 6});
+        map.insert(0x8F, Opcode{ name: Instruction::SAX, mode: Addressing::Absolute, cycle: 4});
+        
         map.insert(0xE9, Opcode{ name: Instruction::SBC, mode: Addressing::Immediate, cycle: 2});
         map.insert(0xE5, Opcode{ name: Instruction::SBC, mode: Addressing::ZeroPage, cycle: 3});
         map.insert(0xF5, Opcode{ name: Instruction::SBC, mode: Addressing::ZeroPageX, cycle: 4});
@@ -170,10 +246,27 @@ lazy_static! {
         map.insert(0xF9, Opcode{ name: Instruction::SBC, mode: Addressing::AbsoluteY, cycle: 4});
         map.insert(0xE1, Opcode{ name: Instruction::SBC, mode: Addressing::IndexedIndirect, cycle: 6});
         map.insert(0xF1, Opcode{ name: Instruction::SBC, mode: Addressing::IndirectIndexed, cycle: 5});
+        map.insert(0xEB, Opcode{ name: Instruction::SBC, mode: Addressing::Immediate, cycle: 2});
 
         map.insert(0x38, Opcode{ name: Instruction::SEC, mode: Addressing::Implied, cycle: 2});
         map.insert(0xF8, Opcode{ name: Instruction::SED, mode: Addressing::Implied, cycle: 2});
         map.insert(0x78, Opcode{ name: Instruction::SEI, mode: Addressing::Implied, cycle: 2});
+
+        map.insert(0x07, Opcode{ name: Instruction::SLO, mode: Addressing::ZeroPage, cycle: 5});
+        map.insert(0x17, Opcode{ name: Instruction::SLO, mode: Addressing::ZeroPageX, cycle: 6});
+        map.insert(0x0F, Opcode{ name: Instruction::SLO, mode: Addressing::Absolute, cycle: 6});
+        map.insert(0x1F, Opcode{ name: Instruction::SLO, mode: Addressing::AbsoluteX, cycle: 7});
+        map.insert(0x1B, Opcode{ name: Instruction::SLO, mode: Addressing::AbsoluteY, cycle: 7});
+        map.insert(0x03, Opcode{ name: Instruction::SLO, mode: Addressing::IndexedIndirect, cycle: 8});
+        map.insert(0x13, Opcode{ name: Instruction::SLO, mode: Addressing::IndirectIndexed, cycle: 8});
+
+        map.insert(0x47, Opcode{ name: Instruction::SRE, mode: Addressing::ZeroPage, cycle: 5});
+        map.insert(0x57, Opcode{ name: Instruction::SRE, mode: Addressing::ZeroPageX, cycle: 6});
+        map.insert(0x4F, Opcode{ name: Instruction::SRE, mode: Addressing::Absolute, cycle: 6});
+        map.insert(0x5F, Opcode{ name: Instruction::SRE, mode: Addressing::AbsoluteX, cycle: 7});
+        map.insert(0x5B, Opcode{ name: Instruction::SRE, mode: Addressing::AbsoluteY, cycle: 7});
+        map.insert(0x43, Opcode{ name: Instruction::SRE, mode: Addressing::IndexedIndirect, cycle: 8});
+        map.insert(0x53, Opcode{ name: Instruction::SRE, mode: Addressing::IndirectIndexed, cycle: 8});
 
         map.insert(0x85, Opcode{ name: Instruction::STA, mode: Addressing::ZeroPage, cycle: 3});
         map.insert(0x95, Opcode{ name: Instruction::STA, mode: Addressing::ZeroPageX, cycle: 4});
@@ -225,12 +318,15 @@ pub enum Instruction {
     DEC,
     DEX,
     DEY,
+    DCP,
     EOR,
     INC,
     INX,
     INY,
+    ISB,
     JMP,
     JSR,
+    LAX,
     LDA,
     LDX,
     LDY,
@@ -241,14 +337,19 @@ pub enum Instruction {
     PHP,
     PLA,
     PLP,
+    RLA,
     ROL,
     ROR,
+    RRA,
     RTI,
     RTS,
+    SAX,
     SBC,
     SEC,
     SED,
     SEI,
+    SLO,
+    SRE,
     STA,
     STX,
     STY,
