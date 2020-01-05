@@ -36,7 +36,6 @@ use cpu::EmulationStatus;
 use debugger::PpuDebugger;
 use renderer::Renderer;
 use ppu::PpuStatus;
-use ppu::register::Register as PpuRegister;
 use controller::Controller;
 
 pub type Cycle = u64;
@@ -66,14 +65,13 @@ impl Context {
         cartbridge.load_program(&mut buffer);
         let sdl_context = sdl2::init().unwrap();
         let events: EventPump = sdl_context.event_pump().unwrap();
-        let debugger = Some(PpuDebugger::new(&sdl_context));
         let controller = Controller::new();
         Context {
             ppu: ppu,
             cpu: cpu,
             cpu_ram: cpu_ram,
             rom: cartbridge,
-            debugger: debugger,
+            debugger: None,
             controller: controller,
             events: events,
             renderer: None,
@@ -84,7 +82,6 @@ impl Context {
         }
     }
     pub fn run(&mut self) -> EmulationStatus{
-        println!("===========================\nTIMING: CPU: {:?}, PPU LINE: {:?}, PPU DOT: {:?}, VRAM Address : {:x?}", self.cpu_cycle, self.ppu.line, self.ppu.dot, self.ppu.register.get_addr());
         let mut cpu_bus = CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu, &mut self.controller);
         let cpu_cb: (Cycle, EmulationStatus) = self.cpu.run(&mut cpu_bus);
         let mut status = cpu_cb.1;
@@ -99,7 +96,6 @@ impl Context {
                         }
                         None => {}
                     }
-                    println!("PPU: Rendering in progress");
                 }
                 PpuStatus::INTERRUPTNMI => self.cpu.trigger_nmi(),
                 PpuStatus::PROCESSING => {}
@@ -151,14 +147,18 @@ impl Context {
             let mut conf = Ini::new();
             conf.with_section(Some("Display".to_owned()))
                 .set("scale", "1.1");
+            conf.with_section(Some("Debugger".to_owned()))
+                .set("scale", "2.0");
             conf.write_to_file(&self.config_path).unwrap();
         }
     }
     pub fn init(&mut self) {
         self.create_config_file();
         let conf = Ini::load_from_file(&self.config_path).unwrap();
-        let scale = conf.section(Some("Display".to_owned())).unwrap().get("scale").unwrap().parse::<f32>().unwrap();
-        self.renderer = Some(Renderer::new(&self.sdl_context, "NesEMU", scale));
+        let renderer_scale = conf.section(Some("Display".to_owned())).unwrap().get("scale").unwrap().parse::<f32>().unwrap();
+        self.renderer = Some(Renderer::new(&self.sdl_context, "NesEMU", renderer_scale));
+        let debugger_scale = conf.section(Some("Debugger".to_owned())).unwrap().get("scale").unwrap().parse::<f32>().unwrap();
+        self.debugger = Some(PpuDebugger::new(&self.sdl_context, debugger_scale));
         let mut cpu_bus = CpuBus::new(&mut self.cpu_ram, &mut self.rom, &mut self.ppu, &mut self.controller);
         println!("CPU: Resetting");
         self.cpu_cycle += self.cpu.reset(&mut cpu_bus) as u64;
@@ -190,7 +190,6 @@ impl Context {
 }
 
 fn main() -> Result<(), String> {
-    // let args: Vec<String> = env::args().collect();
     let mut ctx = Context::new();
     ctx.init();
     'main: loop {

@@ -9,7 +9,6 @@ use crate::ppu::tile::Tile;
 
 const SCREEN_HEIGHT: u32 = 240;
 const SCREEN_WIDTH: u32 = 256 * 2;
-const SCALE: u32 = 2;
 
 #[derive(PartialEq)]
 pub enum DebuggerStatus {
@@ -25,9 +24,9 @@ pub struct PpuDebugger {
 }
 
 impl PpuDebugger {
-    pub fn new(sdl_context: &sdl2::Sdl) -> PpuDebugger {
+    pub fn new(sdl_context: &sdl2::Sdl, scale: f32) -> PpuDebugger {
         let video_subsys = sdl_context.video().unwrap();
-        let window = video_subsys.window("Debugger", SCREEN_WIDTH * SCALE, SCREEN_HEIGHT * SCALE)
+        let window = video_subsys.window("Debugger", (SCREEN_WIDTH as f32 * scale).floor() as u32, (SCREEN_HEIGHT as f32 * scale).floor() as u32)
             .position_centered()
             .set_window_flags(8u32)
             .resizable()
