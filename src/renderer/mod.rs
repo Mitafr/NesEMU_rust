@@ -5,7 +5,7 @@ use sdl2::pixels::*;
 
 use std::time::Instant;
 
-const SCREEN_HEIGHT: u32 = 240;
+const SCREEN_HEIGHT: u32 = 224;
 const SCREEN_WIDTH: u32 = 256;
 
 pub struct Renderer {
@@ -44,9 +44,9 @@ impl Renderer {
         self.texture.update(None, &self.display, (SCREEN_WIDTH * 3) as usize).unwrap();
         self.renderer.copy(&self.texture, None, None).unwrap();
         self.renderer.present();
-        let ms = self.last_frame_time.elapsed().as_millis();
+        /*let ms = self.last_frame_time.elapsed().as_millis();
         println!("{:?} FPS", (1000/ms) as f64);
-        self.last_frame_time = Instant::now();
+        self.last_frame_time = Instant::now();*/
     }
     pub fn set_pixel_rgb(&mut self, x: u32, y: u32, color: (u8,u8,u8)) {
         let coords = get_coords(x, y);
@@ -56,8 +56,8 @@ impl Renderer {
     }
     pub fn reset(&mut self) {
         self.display = [0u8; (SCREEN_WIDTH * SCREEN_HEIGHT * 3) as usize];
-        //self.texture.update(None, &self.display, (SCREEN_WIDTH * 3) as usize).unwrap();
-        //self.renderer.clear();
+        self.texture.update(None, &self.display, (SCREEN_WIDTH * 3) as usize).unwrap();
+        self.renderer.clear();
     }
 }
 

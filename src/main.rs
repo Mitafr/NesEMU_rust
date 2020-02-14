@@ -5,6 +5,7 @@ use sdl2;
 use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::timer::*;
 use ini::Ini;
 
 mod controller;
@@ -62,8 +63,8 @@ impl Context {
         let cpu_ram = Ram::new();
         let ppu = ppu::Ppu::new();
         let mut cartbridge = Cartbridge::new();
-        let mut buffer = cartbridge.read_file(path);
-        cartbridge.load_program(&mut buffer);
+        let buffer = cartbridge.read_file(path);
+        cartbridge.load_program(&buffer);
         let sdl_context = sdl2::init().unwrap();
         let events: EventPump = sdl_context.event_pump().unwrap();
         let controller = Controller::new();

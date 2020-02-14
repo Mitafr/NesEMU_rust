@@ -9,8 +9,8 @@ pub mod tile;
 use crate::cpu::memory::Ram;
 use crate::ppu::background::Background;
 use crate::ppu::mem::PpuMem;
+use crate::renderer::get_rgb;
 #[allow(unused_imports)]
-use crate::ppu::sprite::Sprite;
 use crate::ppu::register::Register;
 use crate::ppu::register::PpuRegister;
 #[allow(unused_imports)]
@@ -127,16 +127,12 @@ impl Ppu {
     }
     pub fn run(&mut self, renderer: &mut Renderer) -> PpuStatus {
         let mut current_status = PpuStatus::PROCESSING;
-        self.dot += 1;
-        if self.line == 0 {
+        if self.line == -1 && self.dot == -1{
             self.background.clear_data();
         }
+        self.dot += 1;
         if self.register.get_background_visibility() == 1 && self.register.get_sprite_visibility() == 1 {
-            if self.dot >= 2 && self.dot <= 256 && self.line < 240 {
-                self.background.shit_tile_data();
-                self.background.render(self.dot as u32, self.line as u32, renderer, &mut self.mem, &mut self.register);
-            }
-            if (self.dot >= 1 && self.dot <= 256) || (self.dot >= 321 && self.dot <= 336) {
+            if self.line >= 1 && (self.dot >= 1 && self.dot <= 256 || self.dot >= 321 && self.dot <= 336) {
                 match self.dot % 8 {
                     0 => self.background.store_tile_data(),
                     1 => self.background.fetch_nametable(&mut self.register),
@@ -150,7 +146,7 @@ impl Ppu {
                 self.copy_y();
             }
             if self.line == 261 || self.line < 240 && self.register.get_background_visibility() == 1 {
-                if self.dot % 8 == 0 && (self.dot >= 321 && self.dot <= 336 || self.dot >= 1 && self.dot <= 256) {
+                if self.dot % 8 == 0 && (self.dot >= 1 && self.dot <= 256 || self.dot >= 321 && self.dot <= 336) {
                     self.increment_x();
                 }
                 if self.dot == 256 {
@@ -162,8 +158,8 @@ impl Ppu {
             }
             // sprite logic
             if self.line >= 1 && self.line <= 239 && self.dot == 65 {
-                // self.mem.spr_mem.clear_secondary();
-                // self.oam_addr = 0;
+                //self.mem.spr_mem.clear_secondary();
+                self.oam_addr = 0;
             }
             if self.line >= 1 && self.line <= 239 && self.dot >= 66 && self.dot <= 256 && self.oam_addr < 255 {
                 // Read Y coordinate
@@ -180,13 +176,18 @@ impl Ppu {
                     }
                 }*/
             }
+            if self.dot >= 1 && self.dot <= 256 && self.line < 240 {
+                self.background.shit_tile_data();
+                self.background.render(self.dot as u32, self.line as u32, renderer, &mut self.mem, &mut self.register);
+            }
             if self.line >= 1 && self.line <= 239 && self.dot >= 257 && self.dot <= 320 {
-                /*let spr_row = (self.dot - 257) / 8;
+                let spr_row = (self.dot - 257) / 8;
                 let spr_line = self.line / 8;
-                let spr_number = spr_row * 4 + spr_line * 4;
+                let spr_number = spr_row * 4 + spr_line as i16 * 4;
                 let y = self.mem.spr_mem.get_oam()[spr_number as usize];
                 let index = self.mem.spr_mem.get_oam()[(spr_number) as usize + 1];
                 let attr = self.mem.spr_mem.get_oam()[(spr_number) as usize + 2];
+                let hflip = attr & 64;
                 let x = self.mem.spr_mem.get_oam()[(spr_number) as usize + 3];
                 let xoffset = ((self.dot + 8 - 257) % ((spr_row + 1) * 8)) as u32;
                 let yoffset = ((self.line + 8) % ((spr_line+1)*8)) as u32;
@@ -196,7 +197,7 @@ impl Ppu {
                 let hi = (patternhi & 0x80) >> 6;
                 let pixel = low | hi;
                 let color = get_rgb(self.mem.palette.peek_color_sprite(attr & 3, pixel));
-                renderer.set_pixel_rgb(x as u32 + xoffset, y as u32 + yoffset, color);*/
+                renderer.set_pixel_rgb(x as u32 + xoffset, y as u32 + yoffset, color);
             }
         }
         if self.line == 241 && self.dot == 1 {
@@ -206,10 +207,10 @@ impl Ppu {
             }
         }
         if self.dot >= CYCLE_PER_LINE {
-            self.dot = 0;
+            self.dot = -1;
             self.line += 1;
-            if self.line >= 261 {
-                self.line = 0;
+            if self.line >= 262 {
+                self.line = -1;
                 self.register.clear_vblank();
                 self.register.clear_spritehit();
                 current_status = PpuStatus::RENDERING;

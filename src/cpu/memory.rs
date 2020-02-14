@@ -4,7 +4,6 @@ use std::io::prelude::*;
 pub struct Ram {
     mem: [u8; 0x1FFF],
     size: usize,
-    offset: usize,
 }
 
 impl Ram {
@@ -12,7 +11,6 @@ impl Ram {
         Ram {
             mem: [0; 0x1FFF],
             size: 0,
-            offset: 0,
         }
     }
     #[allow(dead_code)]
@@ -33,10 +31,10 @@ impl Memory for Ram {
         self.size
     }
     fn peek(&self, i: u16) -> u8 {
-        self.mem[i as usize - self.offset]
+        self.mem[i as usize]
     }
     fn write(&mut self, i: u16, value: u8) -> u8 {
-        self.mem[i as usize - self.offset] = value;
+        self.mem[i as usize] = value;
         value
     }
     fn get_mem(&self) -> &[u8] {

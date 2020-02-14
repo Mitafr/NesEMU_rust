@@ -47,7 +47,7 @@ impl Cartbridge {
     pub fn get_character(&mut self) -> &mut Vec<u8> {
         &mut self.character
     }
-    pub fn load_program(&mut self, data: &mut Vec<u8>) -> &mut Self {
+    pub fn load_program(&mut self, data: &Vec<u8>) -> &mut Self {
         println!("ROM: Loading buffer (size : {}) into Rom memory", data.len());
         let rom_name = str::from_utf8(&data[0..3]).unwrap();
         if rom_name != "NES" {
@@ -59,9 +59,9 @@ impl Cartbridge {
         }
         let prg_pages = data[4] as usize;
         println!("ROM: PRG_PAGES: {}", prg_pages);
-        self.offset = prg_pages * 0x4000;
+        self.offset = 0x4000 / prg_pages;
         let chr_pages = data[5] as usize;
-        let _rom_control_one = data[6] & 0x01; // 0
+        let _rom_control_one = data[6] & 0x01;
         let mut character_rom_start = 0x0010 + prg_pages * 0x4000;
         let character_rom_end = character_rom_start + chr_pages * 0x2000;
         if character_rom_start + 0x0010 > data.len() {

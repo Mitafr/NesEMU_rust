@@ -51,12 +51,12 @@ pub trait CpuRegister {
 impl Register {
     pub fn new() -> Register {
         Register {
-            r_a: 0x00,
-            r_x: 0x00,
-            r_y: 0x00,
+            r_a: 0,
+            r_x: 0,
+            r_y: 0,
             r_sp: 0xff,
             r_pc: 0x8000,
-            r_sr: 0b0010_0000,
+            r_sr: 0x20,
         }
     }
 }
@@ -105,41 +105,28 @@ impl CpuRegister for Register {
         self
     }
     fn set_flag(&mut self, flag: StatusFlags, v: bool) -> &mut Self {
-        if v {
-            match flag {
-                StatusFlags::CARRY => self.r_sr |= 1 << 0,
-                StatusFlags::ZERO => self.r_sr |= 1 << 1,
-                StatusFlags::INTERRUPT => self.r_sr |= 1 << 2,
-                StatusFlags::DECIMAL => self.r_sr |= 1 << 3,
-                StatusFlags::BREAK => self.r_sr |= 1 << 4,
-                StatusFlags::UNUSED => self.r_sr |= 1 << 5,
-                StatusFlags::OVERFLOW => self.r_sr |= 1 << 6,
-                StatusFlags::NEGATIVE => self.r_sr |= 1 << 7,
-            }
-        } else {
-            match flag {
-                StatusFlags::CARRY => self.r_sr &= 0b11111110,
-                StatusFlags::ZERO => self.r_sr &= 0b11111101,
-                StatusFlags::INTERRUPT => self.r_sr &= 0b11111011,
-                StatusFlags::DECIMAL => self.r_sr &= 0b11110111,
-                StatusFlags::BREAK => self.r_sr &= 0b11101111,
-                StatusFlags::UNUSED => self.r_sr &= 0b11011111,
-                StatusFlags::OVERFLOW => self.r_sr &= 0b10111111,
-                StatusFlags::NEGATIVE => self.r_sr &= 0b01111111,
-            }
+        match flag {
+            StatusFlags::CARRY => if v {self.r_sr |= 0x1} else {self.r_sr &= 0xfe},
+            StatusFlags::ZERO => if v {self.r_sr |= 0x2} else {self.r_sr &= 0xfd},
+            StatusFlags::INTERRUPT => if v {self.r_sr |= 0x4} else {self.r_sr &= 0xfb},
+            StatusFlags::DECIMAL => if v {self.r_sr |= 0x8} else {self.r_sr &= 0xf7},
+            StatusFlags::BREAK => if v {self.r_sr |= 0x10} else {self.r_sr &= 0xef},
+            StatusFlags::UNUSED => if v {self.r_sr |= 0x20} else {self.r_sr &= 0xdf},
+            StatusFlags::OVERFLOW => if v {self.r_sr |= 0x40} else {self.r_sr &= 0xbf},
+            StatusFlags::NEGATIVE => if v {self.r_sr |= 0x80} else {self.r_sr &= 0x7F},
         }
         self
     }
     fn get_flag(&self, flag: StatusFlags) -> bool {
         match flag {
-            StatusFlags::CARRY => self.r_sr & 0b00000001 == 0b00000001,
-            StatusFlags::ZERO => self.r_sr & 0b00000010 == 0b00000010,
-            StatusFlags::INTERRUPT => self.r_sr & 0b00000100 == 0b00000100,
-            StatusFlags::DECIMAL => self.r_sr & 0b00001000 == 0b00001000,
-            StatusFlags::BREAK => self.r_sr & 0b00010000 == 0b00010000,
-            StatusFlags::UNUSED => self.r_sr & 0b00100000 == 0b00100000,
-            StatusFlags::OVERFLOW => self.r_sr & 0b01000000 == 0b01000000,
-            StatusFlags::NEGATIVE => self.r_sr & 0b10000000 == 0b10000000,
+            StatusFlags::CARRY => self.r_sr & 0x1 == 0x1,
+            StatusFlags::ZERO => self.r_sr & 0x2 == 0x2,
+            StatusFlags::INTERRUPT => self.r_sr & 0x4 == 0x4,
+            StatusFlags::DECIMAL => self.r_sr & 0x8 == 0x8,
+            StatusFlags::BREAK => self.r_sr & 0x10 == 0x10,
+            StatusFlags::UNUSED => self.r_sr & 0x20 == 0x20,
+            StatusFlags::OVERFLOW => self.r_sr & 0x40 == 0x40,
+            StatusFlags::NEGATIVE => self.r_sr & 0x80 == 0x80,
         }
     }
     fn incr_pc(&mut self) -> &mut Self {
