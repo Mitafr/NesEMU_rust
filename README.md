@@ -1,4 +1,5 @@
 # NesEMU-rust
+[![Build Status](https://travis-ci.com/Mitafr/NesEMU_rust.svg?branch=master)](https://travis-ci.com/Mitafr/NesEMU_rust)
 Nes emulator writing in Rust
 
 Useful ressources:
