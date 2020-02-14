@@ -48,16 +48,16 @@ impl Cpu {
         self.interrupt = CPUInterrupts::INTERRUPTNMI;
     }
     pub fn reset<B: Bus>(&mut self, bus: &mut B) -> Cycle {
-        let hi = bus.peek(0xFFFC) as u16;
-        let low = bus.peek(0xFFFC + 1) as u16;
-        self.register.push_stack(hi as u8, bus);
-        self.register.push_stack(low as u8, bus);
-        let pc = ((low << 8) | hi) as u16;
+        let hi = bus.peek(0xFFFC);
+        let low = bus.peek(0xFFFC + 1);
+        self.register.push_stack(hi, bus);
+        self.register.push_stack(low, bus);
+        let pc = ((low as u16) << 8) | hi as u16;
         self.register.set_pc(pc);
         println!("CPU: first PC : {:x?}", self.register.get_pc());
         7
     }
-    fn set_random_number<B: Bus>(&mut self, bus: &mut B) {
+    fn write_random_number<B: Bus>(&mut self, bus: &mut B) {
         let mut rng = rand::thread_rng();
         let value: u8 = rng.gen_range(0, 255);
         bus.write(0x00FE, value);
@@ -65,9 +65,9 @@ impl Cpu {
     pub fn run<B: Bus>(&mut self, bus: &mut B) -> (Cycle, EmulationStatus) {
         self.page_crossed = false;
         self.extra_cycle = 0;
-        self.set_random_number(bus);
+        self.write_random_number(bus);
         let pc = self.register.get_pc();
-        let value = bus.peek(pc as usize);
+        let value = bus.peek(pc);
         self.register.incr_pc();
         let opcode = opcode::OPCODES.get(&value).unwrap();
         let operand = self.fetch_operand(bus, opcode);
@@ -96,8 +96,8 @@ impl Cpu {
         let mut cycle: Cycle = 0;
         for _i in 0..n {
             self.extra_cycle = 0;
-            self.set_random_number(bus);
-            let value = bus.peek(self.register.get_pc() as usize);
+            self.write_random_number(bus);
+            let value = bus.peek(self.register.get_pc());
             self.register.incr_pc();
             let opcode = opcode::OPCODES.get(&value).unwrap();
             let value = self.fetch_operand(bus, opcode);
@@ -108,78 +108,87 @@ impl Cpu {
     }
 
     fn fetch_absolute_x<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let hi = bus.peek(self.register.get_pc() as usize) as u16;
+        let hi = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let low = bus.peek(self.register.get_pc() as usize) as u16;
+        let low = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let addr = ((low << 8) | hi) as u16;
+        let addr = (low << 8) | hi;
         let res = addr.wrapping_add(self.register.get_x() as u16);
         self.page_crossed = addr & 0xFF00 != res & 0xFF00;
         res
     }
 
     fn fetch_absolute_y<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let hi = bus.peek(self.register.get_pc() as usize) as u16;
+        let hi = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let low = bus.peek(self.register.get_pc() as usize) as u16;
+        let low = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let addr = ((low << 8) | hi) as u16;
+        let addr = (low << 8) | hi;
         let res = addr.wrapping_add(self.register.get_y() as u16);
         self.page_crossed = addr & 0xFF00 != res & 0xFF00;
         res
     }
 
     fn fetch_zeropage_x<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let value = bus.peek(self.register.get_pc() as usize);
+        let value = bus.peek(self.register.get_pc());
         self.register.incr_pc();
         value.wrapping_add(self.register.get_x()) as u16
     }
     fn fetch_zeropage_y<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let value = bus.peek(self.register.get_pc() as usize);
+        let value = bus.peek(self.register.get_pc());
         self.register.incr_pc();
         value.wrapping_add(self.register.get_y()) as u16
     }
 
     fn fetch_relative_address<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let value = bus.peek(self.register.get_pc() as usize) as u16;
+        let value = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let a = value;
-        let pc = self.register.get_pc() as u16;
-        if a < 0x80 {
-            a + pc
-        } else {
-            a + pc - 0x100
+        if value < 0x80 {
+            return value + self.register.get_pc();
         }
+        value + self.register.get_pc() - 0x100
     }
     fn fetch_indirect_absolute<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let hi = bus.peek(self.register.get_pc() as usize) as u16;
+        let hi = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let low = bus.peek(self.register.get_pc() as usize) as u16;
+        let low = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let addr = ((low << 8) | hi) as u16;
-        let upper = bus.peek((addr as usize & 0xFF00) | ((((addr & 0xFF) + 1) & 0xFF)) as usize) as u16;
-        (bus.peek(addr as usize) as u16) + (upper << 8) as u16
+        let addr = (low << 8) | hi;
+        let upper = bus.peek((addr & 0xFF00) | ((((addr & 0xFF) + 1) & 0xFF))) as u16;
+        (bus.peek(addr) as u16) + (upper << 8) as u16
     }
     fn fetch_indexed_indirect<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let value = bus.peek(self.register.get_pc() as usize) as u16;
+        let value = bus.peek(self.register.get_pc());
         self.register.incr_pc();
-        let addr = (value as u8).wrapping_add(self.register.get_x());
-        (bus.peek(addr as usize) as usize) as u16 + ((bus.peek((addr.wrapping_add(1)) as usize & 0xFF) as u16) << 8) & 0xFFFF
+        let addr = value.wrapping_add(self.register.get_x()) as u16;
+        bus.peek(addr) as u16 + ((bus.peek((addr.wrapping_add(1)) & 0xFF) as u16) << 8) & 0xFFFF
     }
     fn fetch_indirect_indexed<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let addr = bus.peek(self.register.get_pc() as usize) as u16;
+        let addr = bus.peek(self.register.get_pc()) as u16;
         self.register.incr_pc();
-        let base_addr = ((bus.peek(addr as usize) as usize) + ((bus.peek((addr as usize + 1) & 0x00FF) as usize) * 0x100)) as u16;
-        let result = ((base_addr.wrapping_add(self.register.get_y() as u16)) & 0xFFFF) as u16;
+        let base_addr = bus.peek(addr) as u16 + ((bus.peek((addr + 1) & 0x00FF) as u16) * 0x100);
+        let result = (base_addr.wrapping_add(self.register.get_y() as u16)) & 0xFFFF;
         self.page_crossed = base_addr & 0xFF00 != result & 0xFF00;
         result
+    }
+    fn fetch_word<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let hi = bus.peek(self.register.get_pc()) as u16;
+        self.register.incr_pc();
+        let low = bus.peek(self.register.get_pc()) as u16;
+        self.register.incr_pc();
+        (low << 8) | hi
+    }
+    fn fetch<B: Bus>(&mut self, bus: &mut B) -> u16 {
+        let value = bus.peek(self.register.get_pc()) as u16;
+        self.register.incr_pc();
+        value
     }
     fn fetch_operand<B: Bus>(&mut self, bus: &mut B, opcode: &Opcode) -> u16 {
         match opcode.mode {
             Addressing::Accumulator => return 0x0000,
             Addressing::Implied => return 0x0000,
-            Addressing::Immediate => self.fetch_immediate(bus),
-            Addressing::ZeroPage => self.fetch_zeropage(bus),
+            Addressing::Immediate => self.fetch(bus),
+            Addressing::ZeroPage => self.fetch(bus),
             Addressing::ZeroPageX => self.fetch_zeropage_x(bus),
             Addressing::ZeroPageY => self.fetch_zeropage_y(bus),
             Addressing::Absolute => self.fetch_word(bus),
@@ -191,48 +200,31 @@ impl Cpu {
             Addressing::IndirectIndexed => self.fetch_indirect_indexed(bus),
         }
     }
-    fn fetch_word<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let hi = bus.peek(self.register.get_pc() as usize) as u16;
-        self.register.incr_pc();
-        let low = bus.peek(self.register.get_pc() as usize) as u16;
-        self.register.incr_pc();
-        ((low << 8) | hi) as u16
-    }
-    fn fetch_immediate<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let value = bus.peek(self.register.get_pc() as usize) as u16;
-        self.register.incr_pc();
-        value
-    }
-    fn fetch_zeropage<B: Bus>(&mut self, bus: &mut B) -> u16 {
-        let value = bus.peek(self.register.get_pc() as usize) as u16;
-        self.register.incr_pc();
-        value
-    }
     fn execute_op<B: Bus>(&mut self, value: u16, bus: &mut B, opcode: &Opcode) -> EmulationStatus {
         match opcode.name {
             Instruction::ADC => {
-                let a = self.register.get_a();
-                let mut m = value as u8;
+                let a = self.register.get_a() as u16;
+                let mut m = value;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize);
+                    m = bus.peek(value) as u16;
                 }
-                let c = match self.register.get_flag(StatusFlags::CARRY) {
+                let c: u16 = match self.register.get_flag(StatusFlags::CARRY) {
                     true => 1,
                     false => 0,
                 };
-                let res: u16 = a as u16  + m as u16 + c as u16;
+                let res = a + m + c;
                 self.register
                     .set_flag(StatusFlags::CARRY, res > 0xff)
                     .set_flag(StatusFlags::ZERO, res as u8 == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0)
-                    .set_flag(StatusFlags::OVERFLOW, (res as u8 ^ m) & ((res as u8 ^ a)) & 0x80 != 0)
+                    .set_flag(StatusFlags::OVERFLOW, (res ^ m) & ((res ^ a)) & 0x80 != 0)
                     .set_a(res as u8);
             }
             Instruction::AND => {
                 let a = self.register.get_a();
                 let mut m = value as u8;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize) as u8;
+                    m = bus.peek(value) as u8;
                 }
                 let res = a & m;
                 self.register
@@ -249,8 +241,8 @@ impl Cpu {
                         .set_flag(StatusFlags::ZERO, a == 0)
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0);
                 } else {
-                    old = bus.peek(value as usize);
-                    let m = bus.write(value as usize, old << 1);
+                    old = bus.peek(value);
+                    let m = bus.write(value, old << 1);
                     self.register
                         .set_flag(StatusFlags::ZERO, m == 0)
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
@@ -277,7 +269,7 @@ impl Cpu {
             }
             Instruction::BIT => {
                 let a = self.register.get_a();
-                let m = bus.peek(value as usize);
+                let m = bus.peek(value);
                 let res =  a & m;
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
@@ -336,7 +328,7 @@ impl Cpu {
                 let a = self.register.get_a();
                 let mut m = value as u8;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize);
+                    m = bus.peek(value);
                 }
                 let res = a.wrapping_sub(m);
                 if opcode.mode == Addressing::AbsoluteX || opcode.mode == Addressing::AbsoluteY || opcode.mode == Addressing::IndirectIndexed {
@@ -351,7 +343,7 @@ impl Cpu {
                 let x = self.register.get_x();
                 let mut m = value as u8;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize);
+                    m = bus.peek(value);
                 }
                 let res = x.wrapping_sub(m);
                 self.register
@@ -363,7 +355,7 @@ impl Cpu {
                 let y = self.register.get_y();
                 let mut m = value as u8;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize);
+                    m = bus.peek(value);
                 }
                 let res = y.wrapping_sub(m);
                 self.register
@@ -372,9 +364,9 @@ impl Cpu {
                     .set_flag(StatusFlags::ZERO, y == m);
             }
             Instruction::DEC => {
-                let old_value = bus.peek(value as usize);
+                let old_value = bus.peek(value);
                 let res = old_value.wrapping_sub(1);
-                bus.write(value as usize, res);
+                bus.write(value, res);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
@@ -394,9 +386,9 @@ impl Cpu {
                     .set_y(res);
             }
             Instruction::DCP => {
-                let old_value = bus.peek(value as usize);
+                let old_value = bus.peek(value);
                 let res = old_value.wrapping_sub(1);
-                bus.write(value as usize, res);
+                bus.write(value, res);
                 let a = self.register.get_a();
                 if opcode.mode == Addressing::AbsoluteX || opcode.mode == Addressing::AbsoluteY || opcode.mode == Addressing::IndirectIndexed {
                     self.extra_cycle = if self.page_crossed { 1 } else { 0 };
@@ -410,7 +402,7 @@ impl Cpu {
                 let a = self.register.get_a();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize) as u16;
+                    m = bus.peek(value) as u16;
                 }
                 let res = a ^ m as u8;
                 self.register
@@ -419,8 +411,8 @@ impl Cpu {
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
             }
             Instruction::INC => {
-                let res = bus.peek(value as usize).wrapping_add(1);
-                bus.write(value as usize, res);
+                let res = bus.peek(value).wrapping_add(1);
+                bus.write(value, res);
                 self.register
                     .set_flag(StatusFlags::ZERO, res == 0)
                     .set_flag(StatusFlags::NEGATIVE, res & (1 << 7) != 0);
@@ -440,8 +432,8 @@ impl Cpu {
                     .set_y(res);
             }
             Instruction::ISB => {
-                let res = bus.peek(value as usize).wrapping_add(1);
-                bus.write(value as usize, res);
+                let res = bus.peek(value).wrapping_add(1);
+                bus.write(value, res);
                 let a = self.register.get_a();
                 let c = match self.register.get_flag(StatusFlags::CARRY) {
                     true => 0,
@@ -467,7 +459,7 @@ impl Cpu {
             Instruction::LAX => {
                 let mut res = value;
                 if opcode.mode != Addressing::Immediate {
-                    res = bus.peek(value as usize) as u16;
+                    res = bus.peek(value) as u16;
                 }
                 if opcode.mode == Addressing::AbsoluteX || opcode.mode == Addressing::AbsoluteY || opcode.mode == Addressing::IndirectIndexed {
                     self.extra_cycle = if self.page_crossed { 1 } else { 0 };
@@ -479,7 +471,7 @@ impl Cpu {
                     .set_x(res as u8);
             }
             Instruction::LDA => {
-                let res = if opcode.mode == Addressing::Immediate { value } else { bus.peek(value as usize) as u16 };
+                let res = if opcode.mode == Addressing::Immediate { value } else { bus.peek(value) as u16 };
                 if opcode.mode == Addressing::AbsoluteX || opcode.mode == Addressing::AbsoluteY || opcode.mode == Addressing::IndirectIndexed {
                     self.extra_cycle = if self.page_crossed { 1 } else { 0 };
                 }
@@ -491,7 +483,7 @@ impl Cpu {
             Instruction::LDX => {   
                 let mut res = value;
                 if opcode.mode != Addressing::Immediate {
-                    res = bus.peek(value as usize) as u16;
+                    res = bus.peek(value) as u16;
                 }
                 if opcode.mode == Addressing::AbsoluteY {
                     self.extra_cycle = if self.page_crossed { 1 } else { 0 };
@@ -504,7 +496,7 @@ impl Cpu {
             Instruction::LDY => {
                 let mut res = value;
                 if opcode.mode != Addressing::Immediate {
-                    res = bus.peek(value as usize) as u16;
+                    res = bus.peek(value) as u16;
                 }
                 if opcode.mode == Addressing::AbsoluteX {
                     self.extra_cycle = if self.page_crossed { 1 } else { 0 };
@@ -523,8 +515,8 @@ impl Cpu {
                         .set_flag(StatusFlags::ZERO, a == 0)
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0);
                 } else {
-                    old = bus.peek(value as usize);
-                    let m = bus.write(value as usize, old >> 1);
+                    old = bus.peek(value);
+                    let m = bus.write(value, old >> 1);
                     self.register
                         .set_flag(StatusFlags::ZERO, m == 0)
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
@@ -536,7 +528,7 @@ impl Cpu {
                 let a = self.register.get_a();
                 let mut m = value;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize) as u16;
+                    m = bus.peek(value) as u16;
                 }
                 let res = a | m as u8;
                 if opcode.mode == Addressing::AbsoluteX || opcode.mode == Addressing::AbsoluteY || opcode.mode == Addressing::IndirectIndexed {
@@ -572,12 +564,12 @@ impl Cpu {
                     .set_flag(StatusFlags::BREAK, false);
             }
             Instruction::RLA => {
-                let old = bus.peek(value as usize);
+                let old = bus.peek(value);
                 let mut m = old << 1;
                 if self.register.get_flag(StatusFlags::CARRY) {
                     m += 1;
                 }
-                bus.write(value as usize, m);
+                bus.write(value, m);
                 let result = self.register.get_a() & m;
                 self.register
                     .set_flag(StatusFlags::ZERO, result == 0)
@@ -598,7 +590,7 @@ impl Cpu {
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0)
                         .set_a(a);
                 } else {
-                    let old = bus.peek(value as usize);
+                    let old = bus.peek(value);
                     let mut m = old << 1;
                     if self.register.get_flag(StatusFlags::CARRY) {
                         m += 1;
@@ -606,7 +598,7 @@ impl Cpu {
                     self.register
                         .set_flag(StatusFlags::CARRY, old & (1 << 7) != 0)
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0);
-                        bus.write(value as usize, m);
+                        bus.write(value, m);
                 }
                 self.register.set_flag(StatusFlags::ZERO, self.register.get_a() == 0);
             }
@@ -622,7 +614,7 @@ impl Cpu {
                         .set_flag(StatusFlags::NEGATIVE, a & (1 << 7) != 0)
                         .set_a(a);
                 } else {
-                    let old = bus.peek(value as usize);
+                    let old = bus.peek(value);
                     let mut m = old >> 1;
                     if self.register.get_flag(StatusFlags::CARRY) {
                         m += 128;
@@ -630,19 +622,19 @@ impl Cpu {
                     self.register
                         .set_flag(StatusFlags::NEGATIVE, m & (1 << 7) != 0)
                         .set_flag(StatusFlags::CARRY, old & (1 << 0) != 0);
-                    bus.write(value as usize, m);
+                    bus.write(value, m);
                 }
             }
             Instruction::RRA => {
                 let a = self.register.get_a();
-                let old = bus.peek(value as usize);
+                let old = bus.peek(value);
                 let mut m = old >> 1;
                 if self.register.get_flag(StatusFlags::CARRY) {
                     m += 128;
                 }
                 self.register
                     .set_flag(StatusFlags::CARRY, old & (1 << 0) != 0);
-                bus.write(value as usize, m);
+                bus.write(value, m);
                 let c = match self.register.get_flag(StatusFlags::CARRY) {
                     true => 1,
                     false => 0,
@@ -660,7 +652,7 @@ impl Cpu {
                 let low = self.register.pop_stack(bus) as u16;
                 let hi = self.register.pop_stack(bus) as u16;
                 self.register
-                    .set_sr(sr as u8)
+                    .set_sr(sr)
                     .set_pc(low | (hi << 8))
                     .set_flag(StatusFlags::UNUSED, true);
             }
@@ -672,13 +664,13 @@ impl Cpu {
             }
             Instruction::SAX => {
                 let res = self.register.get_a() & self.register.get_x();
-                bus.write(value as usize, res);
+                bus.write(value, res);
             }
             Instruction::SBC => {
                 let a = self.register.get_a();
                 let mut m = value as u8;
                 if opcode.mode != Addressing::Immediate {
-                    m = bus.peek(value as usize);
+                    m = bus.peek(value);
                 }
                 let c = match self.register.get_flag(StatusFlags::CARRY) {
                     true => 0,
@@ -702,8 +694,8 @@ impl Cpu {
                 self.register.set_flag(StatusFlags::INTERRUPT, true);
             }
             Instruction::SLO => {
-                let old = bus.peek(value as usize);
-                let m = bus.write(value as usize, old << 1);
+                let old = bus.peek(value);
+                let m = bus.write(value, old << 1);
                 self.register.set_flag(StatusFlags::CARRY, old & (1 << 7) != 0);
                 let result = self.register.get_a() | m;
                 self.register
@@ -712,8 +704,8 @@ impl Cpu {
                     .set_a(result);
             }
             Instruction::SRE => {
-                let old = bus.peek(value as usize);
-                let m = bus.write(value as usize, old >> 1);
+                let old = bus.peek(value);
+                let m = bus.write(value, old >> 1);
                 let result = self.register.get_a() ^ m;
                 self.register
                     .set_flag(StatusFlags::ZERO, result == 0)
@@ -722,13 +714,13 @@ impl Cpu {
                     .set_a(result);
             }
             Instruction::STA => {
-                bus.write(value as usize, self.register.get_a());
+                bus.write(value, self.register.get_a());
             }
             Instruction::STX => {
-                bus.write(value as usize, self.register.get_x());
+                bus.write(value, self.register.get_x());
             }
             Instruction::STY => {
-                bus.write(value as usize, self.register.get_y());
+                bus.write(value, self.register.get_y());
             }
             Instruction::TAX => {
                 let a = self.register.get_a();
@@ -749,7 +741,7 @@ impl Cpu {
                 self.register
                     .set_flag(StatusFlags::ZERO, sp == 0)
                     .set_flag(StatusFlags::NEGATIVE, sp & (1 << 7) != 0)
-                    .set_x(sp as u8);
+                    .set_x(sp);
             }
             Instruction::TXA => {
                 let x = self.register.get_x();
@@ -827,12 +819,14 @@ mod tests {
     #[test]
     fn reset_cpu() {
         let mut ctx = create_test_context(&Vec::new());
+        ctx.rom.write(0xFFFC - 0xC000, 0x01);
+        ctx.rom.write(0xFFFD - 0xC000, 0x80);
         let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
         ctx.cpu.reset(&mut cpu_bus);
-        assert!(ctx.cpu.register.get_flag(StatusFlags::INTERRUPT));
         assert_eq!(ctx.cpu.register.get_x(), 0);
         assert_eq!(ctx.cpu.register.get_a(), 0);
         assert_eq!(ctx.cpu.register.get_y(), 0);
+        assert_eq!(ctx.cpu.register.get_pc(), 0x8001);
     }
     #[test]
     fn adc_immediate_should_add_to_acc() {
@@ -1220,7 +1214,7 @@ mod tests {
         ctx.cpu.register.set_a(0x05);
         let mut cpu_bus = CpuBus::new(&mut ctx.ram, &mut ctx.rom, &mut ctx.ppu, &mut ctx.controller);
         ctx.cpu.run_instructions(1, &mut cpu_bus);
-        assert_eq!(ctx.ram.peek(0xa5u8 as usize), 0x05);
+        assert_eq!(ctx.ram.peek(0xa5u16), 0x05);
     }
     #[test]
     fn test_stx() {

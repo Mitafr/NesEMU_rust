@@ -6,20 +6,20 @@ pub trait PaletteVram {
     fn write_background(&mut self, v: u8);
     fn peek_color_background(&self, v: u8) -> u32;
 
-    fn write_sprite(&mut self, v: u8);
-    fn peek_color_sprite(&self, v: u8) -> u32;
+    fn write_sprite(&mut self, i: usize, v: u8);
+    fn peek_color_sprite(&self, index: u8, v: u8) -> u32;
 }
 
 pub struct Palette {
     pub background: Vec<u32>,
-    pub sprite: Vec<u32>,
+    pub sprite: [u32;16],
 }
 
 impl Palette {
     pub fn new() -> Palette {
         Palette {
             background: vec!(),
-            sprite: vec!(),
+            sprite: [0;16],
         }
     }
 }
@@ -35,15 +35,17 @@ impl PaletteVram for Palette {
             0
         }
     }
-    fn write_sprite(&mut self, v: u8) {
-        self.sprite.push(COLORS[v as usize]);
+    fn write_sprite(&mut self, i: usize, v: u8) {
+        self.sprite[i - 0x3F10] = COLORS[v as usize];
     }
-    fn peek_color_sprite(&self, v: u8) -> u32 {
-        if self.sprite.len() >= v as usize {
+    fn peek_color_sprite(&self, index: u8, v: u8) -> u32 {
+        self.sprite[(index as usize * 4) + v as usize]
+        /*
+        if self.sprite.len() > v as usize {
             self.sprite[v as usize]
         } else {
             0
-        }
+        }*/
     }
 }
 

@@ -32,11 +32,11 @@ impl Memory for Ram {
     fn get_size(&self) -> usize {
         self.size
     }
-    fn peek(&self, i: usize) -> u8 {
-        self.mem[i - self.offset]
+    fn peek(&self, i: u16) -> u8 {
+        self.mem[i as usize - self.offset]
     }
-    fn write(&mut self, i: usize, value: u8) -> u8 {
-        self.mem[i - self.offset] = value;
+    fn write(&mut self, i: u16, value: u8) -> u8 {
+        self.mem[i as usize - self.offset] = value;
         value
     }
     fn get_mem(&self) -> &[u8] {

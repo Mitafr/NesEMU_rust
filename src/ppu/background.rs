@@ -1,75 +1,76 @@
 use crate::ppu::mem::PpuMem;
 use crate::renderer::Renderer;
+use crate::renderer::get_rgb;
 use crate::ppu::register::PpuRegister;
 use crate::ppu::register::Register;
-use crate::ppu::palette::Palette;
-use crate::ppu::tile::Tile;
+use crate::ppu::palette::PaletteVram;
 
 pub struct Background {
-    pub tiles: Vec<Tile>,
-    current_tile: Tile,
-    current_pattern: [u8; 16],
-    tile_index: u8,
+    tiles_data: [u8; 16],
     nametable_addr: usize,
     tile_addr: usize,
     tile_attr: u8,
-    empty_pattern: bool,
+    tile_low_byte: u8,
+    tile_hi_byte: u8,
 }
 
 impl Background {
     pub fn new() -> Background {
         Background {
-            tiles: vec!(),
-            current_tile: Tile::new(),
-            current_pattern: [0u8; 16],
-            tile_index: 0,
+            tiles_data: [0u8; 16],
             nametable_addr: 0x2000,
             tile_addr: 0,
             tile_attr: 0,
-            empty_pattern: true,
+            tile_low_byte: 0,
+            tile_hi_byte: 0,
         }
     }
-    pub fn fetch_attribute(&mut self, addr: usize, vram: &mut PpuMem) {
-        let addr = 0x23C0 | (addr & 0x0C00) | ((addr >> 4) & 0x38) | ((addr >> 2) & 0x07);
-        let value = vram.peek(addr);
-        self.tile_attr = value;
+    pub fn fetch_attribute(&mut self, vram: &mut PpuMem, register: &mut PpuRegister) {
+        let v = register.get_addr();
+        let addr = 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
+        let shift = ((v >> 4) & 4) | (v & 2);
+        self.tile_attr = ((vram.peek(addr as usize) >> shift) & 3) << 2;
     }
     pub fn fetch_loworder_byte(&mut self, vram: &mut PpuMem, register: &mut PpuRegister) {
-        self.current_pattern = [0u8; 16];
-        self.tile_addr = ((self.tile_index as usize) << 4)
-                        | register.get_background_table() as usize;
-        for i in self.tile_addr..self.tile_addr + 8 {
-            if vram.peek(i as usize) != 0 {
-                self.empty_pattern = false;
-            }
-            self.current_pattern[(i - self.tile_addr) as usize] = vram.peek(i as usize);
+        let fine_y = (register.get_addr() >> 12) & 7;
+        let background_table = 0x1000 * register.get_background_table() as u16;
+        self.tile_addr = (background_table + (16 * vram.peek(self.nametable_addr) as u16) + fine_y) as usize;
+        self.tile_low_byte = vram.peek(self.tile_addr);
+    }
+    pub fn fetch_highorder_byte(&mut self, vram: &mut PpuMem, register: &mut PpuRegister) {
+        let fine_y = (register.get_addr() >> 12) & 7;
+        let background_table = 0x1000 * register.get_background_table() as u16;
+        self.tile_addr = (8 + background_table + (16 * vram.peek(self.nametable_addr) as u16) + fine_y) as usize;
+        self.tile_hi_byte = vram.peek(self.tile_addr);
+    }
+    pub fn fetch_nametable(&mut self, register: &mut PpuRegister) {
+        self.nametable_addr = register.get_nametable_address() | register.get_addr() as usize & 0x0FFF;
+    }
+    pub fn render(&mut self, dot: u32, line: u32, renderer: &mut Renderer, vram: &mut PpuMem, register: &mut PpuRegister) {
+        if register.get_background_visibility() == 0 {
+            return;
+        }
+        let rgb = get_rgb(vram.palette.peek_color_background(self.tiles_data[0]));
+        let transparent = get_rgb(vram.palette.peek_color_background(0));
+        if rgb != transparent {
+            renderer.set_pixel_rgb(dot - 2, line, rgb);
         }
     }
-    pub fn fetch_highorder_byte(&mut self, vram: &mut PpuMem) {
-        self.tile_addr += 8;
-        for i in self.tile_addr..self.tile_addr + 8 {
-            if vram.peek(i as usize) != 0 {
-                self.empty_pattern = false;
-            }
-            self.current_pattern[(i - self.tile_addr + 8) as usize] = vram.peek(i as usize);
+    pub fn shit_tile_data(&mut self) {
+        for i in 0..15 {
+            self.tiles_data[i] = self.tiles_data[i+1];
         }
-        self.current_tile.build_tile(&self.current_pattern, (self.nametable_addr - 0x2000) as usize);
-        self.tiles.push(self.current_tile.clone());
-        self.current_tile = Tile::new();
-        self.empty_pattern = true;
     }
-    pub fn fetch_nametable(&mut self, addr: usize, vram: &mut PpuMem, register: &mut PpuRegister) {
-        self.nametable_addr = register.get_nametable_address() | addr & 0x0FFF;
-        self.tile_index = vram.peek(self.nametable_addr);
+    pub fn clear_data(&mut self) {
+        self.tiles_data = [0u8; 16];
     }
-    pub fn clear(&mut self) {
-        self.tiles = Vec::new();
-    }
-    pub fn draw(&mut self, renderer: &mut Renderer, palette: &mut Palette) {
-        for tile in self.tiles.iter_mut() {
-            if tile.index != 0 {
-                renderer.set_tile(tile, palette);
-            }
+    pub fn store_tile_data(&mut self) {
+        for i in 7..15 {
+            let low = (self.tile_low_byte & 0x80) >> 7;
+            let hi = (self.tile_hi_byte & 0x80) >> 6;
+            self.tile_low_byte <<= 1;
+            self.tile_hi_byte <<= 1;
+            self.tiles_data[i] = self.tile_attr | low | hi;
         }
     }
 }

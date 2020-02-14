@@ -7,7 +7,7 @@ pub struct Cartbridge {
     character: Vec<u8>,
     mapper: u8,
     size: usize,
-    offset: usize,
+    pub offset: usize,
 }
 
 impl Cartbridge {
@@ -17,7 +17,7 @@ impl Cartbridge {
             character: Vec::new(),
             mapper: 0,
             size: 0,
-            offset: 0x8000,
+            offset: 0,
         }
     }
     pub fn read_file(&mut self, path: String) -> Vec<u8> {
@@ -27,7 +27,7 @@ impl Cartbridge {
                 return rom;
             },
             Result::Err(err) => {
-                eprintln!("ROM: Cannot open .nes file: {}", path);
+                println!("ROM: Cannot open .nes file: {}", path);
                 panic!(err);
             }
         }
@@ -57,12 +57,13 @@ impl Cartbridge {
         if next != "\x1a" {
             panic!("ROM: Invalid ROM header");
         }
-        let prg_pages = data[4] as usize; // 2
+        let prg_pages = data[4] as usize;
         println!("ROM: PRG_PAGES: {}", prg_pages);
-        let chr_pages = data[5] as usize; // 1
+        self.offset = prg_pages * 0x4000;
+        let chr_pages = data[5] as usize;
         let _rom_control_one = data[6] & 0x01; // 0
-        let mut character_rom_start = 0x0010 + prg_pages * 0x4000; // 32784
-        let character_rom_end = character_rom_start + chr_pages * 0x2000; //40976
+        let mut character_rom_start = 0x0010 + prg_pages * 0x4000;
+        let character_rom_end = character_rom_start + chr_pages * 0x2000;
         if character_rom_start + 0x0010 > data.len() {
             character_rom_start = data.len() - 0x0010;
         }
@@ -72,14 +73,7 @@ impl Cartbridge {
         println!("ROM: CHR-ROM: {}", self.character.len());
         self.size = self.program.len();
         self.mapper = 0;
-        if prg_pages == 1 {
-            self.offset = 0xC000;
-        }
         self
-    }
-    #[allow(dead_code)]
-    pub fn set_offset(&mut self, value: usize) {
-        self.offset = value;
     }
 }
 
@@ -87,11 +81,11 @@ impl Memory for Cartbridge {
     fn get_size(&self) -> usize {
         self.size
     }
-    fn peek(&self, i: usize) -> u8 {
-        self.program[i]
+    fn peek(&self, i: u16) -> u8 {
+        self.program[i as usize]
     }
-    fn write(&mut self, i: usize, value: u8) -> u8 {
-        self.program[i] = value;
+    fn write(&mut self, i: u16, value: u8) -> u8 {
+        self.program[i as usize] = value;
         value
     }
     fn get_mem(&self) -> &[u8] {

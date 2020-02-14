@@ -14,8 +14,8 @@ pub struct CpuBus<'a> {
 }
 
 pub trait Bus {
-    fn peek(&mut self, i: usize) -> u8;
-    fn write(&mut self, i: usize, v: u8) -> u8;
+    fn peek(&mut self, i: u16) -> u8;
+    fn write(&mut self, i: u16, v: u8) -> u8;
 }
 
 impl<'a> CpuBus<'a> {
@@ -30,11 +30,11 @@ impl<'a> CpuBus<'a> {
 }
 
 impl<'a> Bus for CpuBus<'a> {
-    fn peek(&mut self, i: usize) -> u8 {
+    fn peek(&mut self, i: u16) -> u8 {
         match i & 0xFFFF {
             0..=0x1FFF => self.ram.peek(i),
             0x2000..=0x3FFF => self.ppu.peek(i),
-            0x4000..=0x4014 => 0,
+            0x4000..=0x4014 => panic!("Not implemented yet !"),
             0x4015 => 0,
             0x4016 => self.controller.read(),
             0x4017 => self.controller.read(),
@@ -45,11 +45,12 @@ impl<'a> Bus for CpuBus<'a> {
             _ => panic!("Wrong index => {:x?}", i),
         }
     }
-    fn write(&mut self, i: usize, v: u8) -> u8 {
+    fn write(&mut self, i: u16, v: u8) -> u8 {
         match i {
             0..=0x1FFF => self.ram.write(i, v),
             0x2000..=0x3FFF => self.ppu.write(i, v),
-            0x4000..=0x4014 => 0,
+            0x4000..=0x4013 => 0,
+            0x4014 => self.ppu.write_dma(v, &mut self.ram),
             0x4015 => 0,
             0x4016 => self.controller.write(v),
             0x4017 => self.controller.write(v),

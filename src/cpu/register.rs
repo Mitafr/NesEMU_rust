@@ -159,13 +159,13 @@ impl CpuRegister for Register {
         self
     }
     fn push_stack<B: Bus>(&mut self, v: u8, bus: &mut B) -> &mut Self {
-        bus.write((self.r_sp as u16 | 0x0100) as usize, v);
+        bus.write(self.r_sp as u16 | 0x0100, v);
         self.decr_sp();
         self
     }
     fn pop_stack<B: Bus>(&mut self, bus: &mut B) -> u8 {
         self.incr_sp();
-        let val = bus.peek((0x0100 | self.r_sp as u16) as usize);
+        let val = bus.peek(0x0100 | self.r_sp as u16);
         val
     }
 }

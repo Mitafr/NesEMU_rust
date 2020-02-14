@@ -5,9 +5,10 @@ use sdl2::pixels::*;
 
 use crate::ppu::palette::PaletteVram;
 use crate::ppu::palette::Palette;
+use crate::ppu::sprite::SpriteMem;
 use crate::ppu::tile::Tile;
 
-const SCREEN_HEIGHT: u32 = 240;
+const SCREEN_HEIGHT: u32 = 240 * 2;
 const SCREEN_WIDTH: u32 = 256 * 2;
 
 #[derive(PartialEq)]
@@ -48,14 +49,18 @@ impl PpuDebugger {
         }
     }
     pub fn draw_tileset(&mut self, tileset: &Vec<Tile>, palette: &Palette) -> DebuggerStatus {
+        self.draw_rect(0, 0, 256, 240);
         for (tile_index, tile) in tileset.iter().enumerate() {
             for (y, tt) in tile.iter().enumerate() {
                 for (x, tile_v) in tt.iter().enumerate() {
+                    if *tile_v == 0 {
+                        continue;
+                    }
                     let col = palette.peek_color_background(*tile_v);
                     let xcoord = (((tile_index % 32) * 8 + x)) as u32;
                     let ycoord = (((tile_index / 32) * 8 + y)) as u32;
                     let color = get_rgb(col);
-                    self.set_pixel(xcoord, ycoord, color.0, color.1, color.2);
+                    self.set_pixel_rgb(xcoord, ycoord, color);
                 }
             }
         }
@@ -65,6 +70,7 @@ impl PpuDebugger {
         DebuggerStatus::PROCESSING
     }
     pub fn draw_palette(&mut self, palette: &Palette) -> DebuggerStatus {
+        self.draw_rect(256, 0, 256, 240);
         for (tile,t) in palette.background.iter().enumerate() {
             let xcoord = (SCREEN_WIDTH / 2) + (((tile % 32) * 8)) as u32;
             let ycoord = (((tile / 32) * 8)) as u32;
@@ -74,7 +80,7 @@ impl PpuDebugger {
             let color = get_rgb(*t);
             for i in 0..8 {
                 for j in 0..8 {
-                    self.set_pixel(xcoord + i, ycoord + j, color.0, color.1, color.2);
+                    self.set_pixel_rgb(xcoord + i, ycoord + j, color);
                 }
             }
         }
@@ -87,7 +93,7 @@ impl PpuDebugger {
             let color = get_rgb(*t);
             for i in 0..8 {
                 for j in 0..8 {
-                    self.set_pixel(xcoord + i, ycoord + j, color.0, color.1, color.2);
+                    self.set_pixel_rgb(xcoord + i, ycoord + j, color);
                 }
             }
         }
@@ -96,14 +102,81 @@ impl PpuDebugger {
         }
         DebuggerStatus::PROCESSING
     }
+    pub fn draw_nametable(&mut self, nametable: &[u8], tileset: &Vec<Tile>, palette: &Palette) {
+        self.draw_rect(0, 240, 256, 240);
+        for (b, i) in nametable.iter().enumerate() {
+            if *i == 0 {
+                continue;
+            }
+            let tile = tileset.get(*i as usize).unwrap();
+            for (y, tt) in tile.iter().enumerate() {
+                for (x, tile_v) in tt.iter().enumerate() {
+                    let col = palette.peek_color_background(*tile_v);
+                    let xcoord = 1 + (((b % 32) * 8 + x)) as u32;
+                    let ycoord = 241 + (((b as usize / 32) * 8 + y)) as u32;
+                    let color = get_rgb(col);
+                    if color == (0,0,0) || color == get_rgb(palette.peek_color_background(0)) {
+                        continue;
+                    }
+                    self.set_pixel_rgb(xcoord, ycoord, color);
+                }
+            }
+        }
+        self.draw_rect(256, 240, 256, 240);
+    }
+    pub fn draw_sprites(&mut self, tileset: &Vec<Tile>, mem: &SpriteMem, palette: &Palette) {
+        self.draw_rect(256, 240, 256, 240);
+        let spr_mem = mem.get_oam();
+        for i in (0..spr_mem.len()).step_by(4) {
+            let mut y = 0;
+            let mut x = 0;
+            let mut index = 0;
+            let mut attr = 0;
+            for j in 0..4 {
+                if j % 4 == 0 {
+                    y = spr_mem[i+j];
+                }
+                if j % 4 == 1 {
+                    index = spr_mem[i+j];
+                }
+                if j % 4 == 2 {
+                    attr = spr_mem[i+j];
+                }
+                if j % 4 == 3 {
+                    x = spr_mem[i+j];
+                }
+            }
+            let tile = tileset.get(index as usize).unwrap();
+            for (y2, tt) in tile.iter().enumerate() {
+                for (x2, tile_v) in tt.iter().enumerate() {
+                    let col = palette.peek_color_sprite(attr & 3, *tile_v);
+                    let xcoord = 256 + (((x as usize) + x2)) as u32;
+                    let ycoord = 240 + (((y as usize) + y2)) as u32;
+                    let color = get_rgb(col);
+                    if color == (0,0,0) || color == get_rgb(palette.peek_color_sprite(0, 0)) {
+                        self.set_pixel_rgb(xcoord, ycoord, color);
+                        continue;
+                    }
+                    self.set_pixel_rgb(xcoord, ycoord, color);
+                }
+            }
+        }
+    }
+    fn draw_rect(&mut self, x: u32, y: u32, w: u32, h: u32) {
+        for i in x..x+w {
+            for j in y..y+h {
+                if i != x && i != x+w - 1 && j != y && j != y+h - 1 {
+                    continue;
+                }
+                self.set_pixel_rgb(i, j, (255,255,255));
+            }
+        }
+    }
     pub fn draw(&mut self) {
         self.renderer.clear();
         self.texture.update(None, &self.display, (SCREEN_WIDTH * 3) as usize).unwrap();
         self.renderer.copy(&self.texture, None, None).unwrap();
         self.renderer.present();
-    }
-    pub fn init(&mut self) {
-        // self.renderer.set_position(x as isize, y as isize);
     }
     pub fn toggle_view(&mut self) {
         if self.is_open {
@@ -116,14 +189,11 @@ impl PpuDebugger {
     pub fn is_open(&self) -> bool {
         self.is_open
     }
-    /*pub fn has_pixel(&mut self, x: u32, y: u32) -> bool {
-        self.display[get_coords(x, y)] != 0
-    }*/
-    pub fn set_pixel(&mut self, x: u32, y: u32, r: u8, g: u8, b: u8) {
+    pub fn set_pixel_rgb(&mut self, x: u32, y: u32, color: (u8,u8,u8)) {
         let coords = get_coords(x, y);
-        self.display[coords as usize] = r;
-        self.display[(coords + 1) as usize] = g;
-        self.display[(coords + 2) as usize] = b;
+        self.display[coords as usize] = color.0;
+        self.display[(coords + 1) as usize] = color.1;
+        self.display[(coords + 2) as usize] = color.2;
     }
 }
 

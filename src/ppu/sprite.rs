@@ -1,19 +1,17 @@
 use std::fmt;
 
-use crate::ppu::register::Register;
-use crate::ppu::register::PpuRegister;
-use crate::ppu::mem::PpuMem;
-use crate::ppu::palette::Palette;
-use crate::renderer::Renderer;
-
 pub struct SpriteMem {
-    mem: [u8; 0x100],
+    oam: [u8; 0x100],
+    secondary_oam: [u8; 0x20],
+    // secondary_index: u8,
 }
 
 impl SpriteMem {
     pub fn new() -> SpriteMem {
         SpriteMem {
-            mem: [0; 0x100],
+            oam: [0; 0x100],
+            secondary_oam: [0; 0x20],
+            // secondary_index: 0,
         }
     }
 
@@ -21,13 +19,26 @@ impl SpriteMem {
         self.mem[i]
     }*/
     pub fn write_data(&mut self, i: usize, value: u8) -> u8 {
-        println!("Writing in SPR-RAM at {:x?} -> {:x?} ({:08b})", i, value, value);
-        self.mem[i] = value;
+        self.oam[i] = value;
         value
     }
-    pub fn get_mem(&self) -> &[u8] {
-        &self.mem
+    pub fn get_oam(&self) -> &[u8] {
+        &self.oam
     }
+    pub fn get_secondary(&self) -> &[u8] {
+        &self.secondary_oam
+    }
+    /*pub fn push_secondary(&mut self, v: u8) {
+        self.secondary_oam[self.secondary_index as usize] = v;
+        self.secondary_index += 1;
+    }
+    pub fn is_secondary_full(&self) -> bool {
+        self.secondary_index == 9
+    }
+    pub fn clear_secondary(&mut self) {
+        self.secondary_oam = [0;0x20];
+        self.secondary_index = 0;
+    }*/
 }
 
 impl fmt::Display for SpriteMem {
@@ -36,7 +47,7 @@ impl fmt::Display for SpriteMem {
         writeln!(f, "|--------------++---------------|")?;
         writeln!(f, "|\tadresse =>    value  |")?;
         writeln!(f, "|--------------++---------------|")?;
-        for (i, b) in self.mem.iter().enumerate() {
+        for (i, b) in self.oam.iter().enumerate() {
             if i % 16 == 0 {    
                 write!(f, "\n{:04x?}:", i)?;
             }
@@ -48,7 +59,6 @@ impl fmt::Display for SpriteMem {
         Ok(())
     }
 }
-
 pub struct Sprite {
     pub coord_y: u8,
     pub coord_x: u8,
@@ -60,6 +70,7 @@ pub struct Sprite {
 }
 
 impl Sprite {
+    #[allow(dead_code)]
     pub fn new(value: u8) -> Sprite {
         Sprite {
             coord_x: value & 0b0000_1000,
@@ -69,6 +80,7 @@ impl Sprite {
             flags: value & 0b0000_0100,
         }
     }
+    #[allow(dead_code)]
     pub fn build_sprite(&mut self, slice: &[u8; 16]) {
         for j in 0..8 {
             let tilelow = slice[j];
@@ -83,51 +95,5 @@ impl Sprite {
     #[allow(dead_code)]
     pub fn get_index(&self) -> u8 {
         self.index
-    }
-    pub fn get_pixels(&self) -> &Vec<Vec<u8>> {
-        &self.pixels
-    }
-}
-
-pub struct SpriteSet {
-    sprites: Vec<Sprite>,
-}
-
-impl SpriteSet {
-    pub fn new() -> SpriteSet {
-        SpriteSet {
-            sprites: vec!(),
-        }
-    }
-    pub fn build(&mut self, spr_mem: &mut SpriteMem, register: &mut PpuRegister, vram: &mut PpuMem) {
-            for i in spr_mem.get_mem().iter() {
-                if *i == 0 {
-                    continue;
-                }
-                let mut index = (*i & 0b0000_0010) as usize;
-                let mut offset = 0;
-                if register.get_sprite_table() == 1 {
-                    index += 0x1000;
-                    offset = 0x1000;
-                }
-                while index < offset + 16 {
-                    let mut v = [0; 16];
-                    for j in 0..16 {
-                        v[j] = vram.peek(index as usize);
-                        index += 1;
-                    }
-                    let mut sprite = Sprite::new(*i);
-                    sprite.build_sprite(&v);
-                    self.sprites.push(sprite);
-                }
-            }
-    }
-    pub fn draw(&mut self, renderer: &mut Renderer, palette: &mut Palette) {
-        for i in self.sprites.iter_mut() {
-            renderer.set_sprite(i, palette);
-        }
-    }
-    pub fn len(&self) -> usize {
-        self.sprites.len()
     }
 }

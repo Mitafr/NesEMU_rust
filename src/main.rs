@@ -16,6 +16,7 @@ mod ppu;
 mod renderer;
 mod rom;
 
+use std::env;
 use std::fmt;
 use std::fs;
 use std::option::Option;
@@ -56,12 +57,12 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new() -> Context {
+    pub fn new(path: String) -> Context {
         let cpu = Cpu::new();
         let cpu_ram = Ram::new();
         let ppu = ppu::Ppu::new();
         let mut cartbridge = Cartbridge::new();
-        let mut buffer = cartbridge.read_file(String::from("roms/nestest.nes"));
+        let mut buffer = cartbridge.read_file(path);
         cartbridge.load_program(&mut buffer);
         let sdl_context = sdl2::init().unwrap();
         let events: EventPump = sdl_context.event_pump().unwrap();
@@ -86,23 +87,37 @@ impl Context {
         let cpu_cb: (Cycle, EmulationStatus) = self.cpu.run(&mut cpu_bus);
         let mut status = cpu_cb.1;
         for _ in 0..cpu_cb.0 * 3 {
-            match self.ppu.run() {
-                PpuStatus::RENDERING => {
-                    match &mut self.renderer {
-                        Some(renderer) => {
-                            self.ppu.background.draw(renderer, &mut self.ppu.palette);
-                            self.ppu.sprites.draw(renderer, &mut self.ppu.palette);
+            match &mut self.renderer {
+                Some(renderer) => {
+                    match self.ppu.run(renderer) {
+                        PpuStatus::RENDERING => {
                             renderer.draw_window();
-                        }
-                        None => {}
+                            renderer.reset();
+                        },
+                        PpuStatus::INTERRUPTNMI => self.cpu.trigger_nmi(),
+                        PpuStatus::PROCESSING => {}
                     }
                 }
-                PpuStatus::INTERRUPTNMI => self.cpu.trigger_nmi(),
-                PpuStatus::PROCESSING => {}
+                None => {}
             }
         }
         self.cpu_cycle += cpu_cb.0 as Cycle;
         self.ppu_cycle += cpu_cb.0 as Cycle * 3;
+        if status == EmulationStatus::PROCESSING && self.ppu.has_been_updated() {
+            match &mut self.debugger {
+                Some(debugger) => {
+                    if debugger.is_open() {
+                        debugger.draw_tileset(&self.ppu.tileset, &self.ppu.mem.palette);
+                        debugger.draw_palette(&self.ppu.mem.palette);
+                        debugger.draw_nametable(&self.ppu.mem.nametable, &self.ppu.tileset, &self.ppu.mem.palette);
+                        debugger.draw_sprites(&self.ppu.tileset, &self.ppu.mem.spr_mem, &self.ppu.mem.palette);
+                        debugger.draw();
+                        self.ppu.clear_updated();
+                    }
+                }
+                None => {}
+            }
+        }
         for event in self.events.poll_iter() {
             self.controller.poll_events(&event);
             match event {
@@ -122,19 +137,6 @@ impl Context {
                     status = EmulationStatus::RESET;
                 }
                 _ => {}
-            }
-        }
-        if status == EmulationStatus::PROCESSING && self.ppu.has_been_updated() {
-            match &mut self.debugger {
-                Some(debugger) => {
-                    if debugger.is_open() {
-                        debugger.draw_tileset(&self.ppu.tileset, &self.ppu.palette);
-                        debugger.draw_palette(&self.ppu.palette);
-                        debugger.draw();
-                        self.ppu.clear_updated();
-                    }
-                }
-                None => {}
             }
         }
         status
@@ -165,12 +167,6 @@ impl Context {
         println!("PPU: Initializing ...");
         self.ppu.init(&mut self.rom);
         println!("PPU: Initialized successfully");
-        match &mut self.debugger {
-            Some(debugger) => {
-                debugger.init();
-            }
-            None => {}
-        }
     }
     pub fn reset(&mut self) {
         self.cpu_ram = Ram::new();
@@ -190,7 +186,8 @@ impl Context {
 }
 
 fn main() -> Result<(), String> {
-    let mut ctx = Context::new();
+    let args: Vec<String> = env::args().collect();
+    let mut ctx = Context::new(String::from(&args[1]));
     ctx.init();
     'main: loop {
         'run: loop {
@@ -216,6 +213,7 @@ impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.cpu)?;
         writeln!(f, "{}", self.ppu)?;
+        writeln!(f, "end cpu cycle : {}", self.cpu_cycle - 7)?;
         Ok(())
     }
 }

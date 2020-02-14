@@ -26,9 +26,6 @@ impl Tile {
             self.index = index;
         }
     }
-    pub fn get_pixels(&self) -> &Vec<Vec<u8>> {
-        &self.pixels
-    }
 }
 
 impl fmt::Display for Tile {
